@@ -112,8 +112,8 @@ internal static class SysvolPolicyParsers
                 IgnoreWhitespace = true
             });
             var document = XDocument.Load(reader, LoadOptions.None);
-            var cpasswordCount = document
-                .DescendantsAndSelf()
+            var elements = document.Root?.DescendantsAndSelf() ?? Enumerable.Empty<XElement>();
+            var cpasswordCount = elements
                 .SelectMany(element => element.Attributes())
                 .Count(attribute => string.Equals(
                     attribute.Name.LocalName,
