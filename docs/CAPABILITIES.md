@@ -134,7 +134,28 @@ This capability describes **configured local trust objects only**. It does not c
 
 ### `directory.acls` v1
 
-Status: planned. This capability will preserve raw security-relevant ACE semantics required for later rights/path analysis, including object type and inherited object type GUIDs.
+Owner: `ad.ldap.acls`
+
+This capability depends on complete `directory.core`, `directory.domains`, `directory.users`, `directory.groups`, `directory.computers` and `directory.ous` data. v1 covers the normalized default-domain root, user, group, computer and OU objects already present in the prerequisite snapshot.
+
+The LDAP request explicitly asks only for the DACL section of `nTSecurityDescriptor`. It does not request SACL data and does not require SACL-reading privileges. Owner/group sections are also outside the v1 contract.
+
+`Complete` guarantees that every expected v1 target returned a usable DACL security descriptor and that DogfighterAD preserved:
+
+- security-descriptor control flags;
+- DACL state as `NotPresent`, `Null`, `Empty` or `Present` so zero ACEs cannot erase important authorization semantics;
+- Allow and Deny standard ACEs;
+- Allow and Deny object ACEs;
+- trustee SID;
+- raw access mask;
+- ACE flags and inherited status;
+- `ObjectType` GUID when present;
+- `InheritedObjectType` GUID when present;
+- evidence facts tied back to the target object and LDAP source.
+
+v1 fully normalizes ACE types `ACCESS_ALLOWED_ACE`, `ACCESS_DENIED_ACE`, `ACCESS_ALLOWED_OBJECT_ACE` and `ACCESS_DENIED_OBJECT_ACE`. If a descriptor contains an unsupported ACE type, malformed SID/GUID layout, invalid bounds, a missing descriptor, an unexpected target or an expected target omitted by LDAP, coverage becomes `Partial` instead of silently dropping security semantics.
+
+The full raw binary security descriptor is not persisted as a fact by default; normalized descriptor state and ACE evidence are retained instead.
 
 ### `gpo.metadata` v1
 

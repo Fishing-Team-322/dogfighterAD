@@ -17,9 +17,9 @@ The project is built around a strict separation between collection, normalizatio
 
 ## Current implementation
 
-The foundation branch currently contains the snapshot/domain model, deterministic fragment assembly, capability-driven collection planning/execution, read-only paged/streaming LDAP transport, RootDSE discovery, default-domain metadata, one-pass collection of users/groups/computers/OUs, range-safe group membership collection with direct nested-group edges, primary groups and foreign security principals, and local trust relationship collection from `trustedDomain` objects. Stable fact identity, capability-version compatibility, core tests, and GitHub Actions CI are also in place.
+The foundation branch currently contains the snapshot/domain model, deterministic fragment assembly, capability-driven collection planning/execution, read-only paged/streaming LDAP transport, RootDSE discovery, default-domain metadata, one-pass collection of users/groups/computers/OUs, range-safe group membership collection with direct nested-group edges, primary groups and foreign security principals, local trust relationship collection from `trustedDomain` objects, and DACL/ACE collection for normalized default-domain objects. Security-descriptor state distinguishes absent/null/empty/present DACLs, and object-specific ACE GUID semantics are preserved. Stable fact identity, capability-version compatibility, core tests, and GitHub Actions CI are also in place.
 
-A full AD assessment is **not implemented yet**. The next collection milestones are ACLs/security descriptors, GPO data, SYSVOL settings and portable snapshot serialization.
+A full AD assessment is **not implemented yet**. The next collection milestones are GPO metadata/links, SYSVOL settings and portable snapshot serialization.
 
 ## Documentation
 

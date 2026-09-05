@@ -21,12 +21,15 @@ This document tracks what is actually implemented in the repository and what is 
 - [x] Dependency failure propagation: downstream collectors are blocked instead of producing misleading clean data.
 - [x] Read-only LDAP adapter with paging and binary attribute support.
 - [x] Streaming paged LDAP entry API for large directory scans without transport-level full-result buffering.
+- [x] DACL-only LDAP security-descriptor control without requesting SACL/owner/group data.
+- [x] Portable self-relative security-descriptor/DACL parser with explicit unsupported-ACE failure.
 - [x] RootDSE discovery collector.
 - [x] Domain metadata collector using upstream RootDSE state.
 - [x] One-pass directory object collector for users, groups, computers and OUs.
 - [x] Range-aware AD `member` retrieval that follows `member;range=start-end` chunks through the terminal range.
 - [x] Group membership collection with direct group-to-group edges, primary groups, FSP support and explicit partial-result accounting.
 - [x] Local default-domain trust relationship collection from `trustedDomain` objects without contacting remote domains.
+- [x] DACL/ACE collection for normalized default-domain root, users, groups, computers and OUs.
 - [x] Portable GUID/SID/generalized-time/AD FileTime conversion helpers for LDAP normalization.
 - [x] GitHub Actions build/test pipeline.
 - [x] Core unit tests for fact IDs, capability compatibility, snapshot invariants, fragment merging, collection planning/execution and LDAP collector mapping.
@@ -43,7 +46,7 @@ Order matters. We build broad reliable collection before a large rule library.
 - [x] Organizational units collector/capability.
 - [x] Group membership collector with direct nested-group relationship preservation, primary groups and foreign security principals.
 - [x] Trust collector for configured local `trustedDomain` relationships.
-- [ ] Security descriptor / ACL collector with correct object/inherited object GUID handling.
+- [x] Security descriptor / DACL collector with object/inherited object GUID handling and explicit null/empty DACL state.
 - [ ] GPO metadata and link collection from LDAP.
 - [ ] SYSVOL read-only GPO settings collection.
 - [ ] Collection profiles (`minimal`, `audit-full`, later custom profiles).
@@ -60,6 +63,7 @@ Order matters. We build broad reliable collection before a large rule library.
 - [ ] AD CS directory topology and security-relevant configuration.
 - [ ] Sites/subnets and forest topology where needed for assessment logic.
 - [ ] Better partial-result accounting for referrals, inaccessible naming contexts and mid-stream LDAP failures.
+- [ ] Additional conditional/callback ACE families where required by real-world fixtures; unsupported v1 ACEs remain explicit `Partial` coverage.
 
 ## Analysis Core
 
