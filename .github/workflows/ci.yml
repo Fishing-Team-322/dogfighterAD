@@ -10,8 +10,11 @@ on:
 permissions:
   contents: read
 
+env:
+  TESTINGPLATFORM_TELEMETRY_OPTOUT: "1"
+
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -24,7 +27,10 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore
-        run: dotnet restore src/DogfighterAD.Collectors.ActiveDirectory/DogfighterAD.Collectors.ActiveDirectory.csproj
+        run: dotnet restore tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj
 
       - name: Build
-        run: dotnet build src/DogfighterAD.Collectors.ActiveDirectory/DogfighterAD.Collectors.ActiveDirectory.csproj --configuration Release --no-restore
+        run: dotnet build tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj --configuration Release --no-restore
+
+      - name: Unit tests
+        run: dotnet run --project tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj --configuration Release --no-build
