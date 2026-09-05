@@ -14,13 +14,14 @@ public sealed class DogadArtifactSerializerTests
     [Fact]
     public async Task WriteThenReadThenWrite_IsByteForByteStable()
     {
+        var cancellationToken = TestContext.Current.CancellationToken;
         var serializer = new DogadArtifactSerializer();
         var snapshot = CreateSnapshot(reverseCollections: false);
 
-        var first = await WriteAsync(serializer, snapshot);
+        var first = await WriteAsync(serializer, snapshot, cancellationToken);
         await using var input = new MemoryStream(first, writable: false);
-        var restored = await serializer.ReadAsync(input);
-        var second = await WriteAsync(serializer, restored);
+        var restored = await serializer.ReadAsync(input, cancellationToken: cancellationToken);
+        var second = await WriteAsync(serializer, restored, cancellationToken);
 
         Assert.Equal(first, second);
         Assert.Equal(snapshot.Metadata.SnapshotId, restored.Metadata.SnapshotId);
@@ -31,10 +32,17 @@ public sealed class DogadArtifactSerializerTests
     [Fact]
     public async Task Write_LogicalCollectionOrderDoesNotChangeArtifactBytes()
     {
+        var cancellationToken = TestContext.Current.CancellationToken;
         var serializer = new DogadArtifactSerializer();
 
-        var normal = await WriteAsync(serializer, CreateSnapshot(reverseCollections: false));
-        var reversed = await WriteAsync(serializer, CreateSnapshot(reverseCollections: true));
+        var normal = await WriteAsync(
+            serializer,
+            CreateSnapshot(reverseCollections: false),
+            cancellationToken);
+        var reversed = await WriteAsync(
+            serializer,
+            CreateSnapshot(reverseCollections: true),
+            cancellationToken);
 
         Assert.Equal(normal, reversed);
     }
@@ -42,8 +50,9 @@ public sealed class DogadArtifactSerializerTests
     [Fact]
     public async Task Read_TamperedPayloadFailsHashValidation()
     {
+        var cancellationToken = TestContext.Current.CancellationToken;
         var serializer = new DogadArtifactSerializer();
-        var artifact = await WriteAsync(serializer, CreateSnapshot(false));
+        var artifact = await WriteAsync(serializer, CreateSnapshot(false), cancellationToken);
         using var mutable = new MemoryStream(artifact.ToArray());
         using (var archive = new ZipArchive(mutable, ZipArchiveMode.Update, leaveOpen: true))
         {
@@ -51,12 +60,12 @@ public sealed class DogadArtifactSerializerTests
             var replacement = archive.CreateEntry(DogadFormat.SnapshotEntryName, CompressionLevel.NoCompression);
             replacement.LastWriteTime = new DateTimeOffset(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
             await using var stream = replacement.Open();
-            await stream.WriteAsync(Encoding.UTF8.GetBytes("{}"));
+            await stream.WriteAsync(Encoding.UTF8.GetBytes("{}"), cancellationToken);
         }
 
         mutable.Position = 0;
         var exception = await Assert.ThrowsAsync<DogadArtifactException>(() =>
-            serializer.ReadAsync(mutable));
+            serializer.ReadAsync(mutable, cancellationToken: cancellationToken));
 
         Assert.Equal("dogad.payload.length-mismatch", exception.Code);
     }
@@ -64,8 +73,9 @@ public sealed class DogadArtifactSerializerTests
     [Fact]
     public async Task Read_UnsupportedFormatVersionFailsBeforeSnapshotUse()
     {
+        var cancellationToken = TestContext.Current.CancellationToken;
         var serializer = new DogadArtifactSerializer();
-        var artifact = await WriteAsync(serializer, CreateSnapshot(false));
+        var artifact = await WriteAsync(serializer, CreateSnapshot(false), cancellationToken);
         using var mutable = new MemoryStream(artifact.ToArray());
         using (var archive = new ZipArchive(mutable, ZipArchiveMode.Update, leaveOpen: true))
         {
@@ -73,7 +83,9 @@ public sealed class DogadArtifactSerializerTests
             DogadManifest manifest;
             await using (var readStream = entry.Open())
             {
-                manifest = await JsonSerializer.DeserializeAsync<DogadManifest>(readStream)
+                manifest = await JsonSerializer.DeserializeAsync<DogadManifest>(
+                    readStream,
+                    cancellationToken: cancellationToken)
                     ?? throw new InvalidOperationException("Test manifest failed to deserialize.");
             }
 
@@ -81,22 +93,26 @@ public sealed class DogadArtifactSerializerTests
             var replacement = archive.CreateEntry(DogadFormat.ManifestEntryName, CompressionLevel.NoCompression);
             replacement.LastWriteTime = new DateTimeOffset(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
             await using var writeStream = replacement.Open();
-            await JsonSerializer.SerializeAsync(writeStream, manifest with { FormatVersion = 999 });
+            await JsonSerializer.SerializeAsync(
+                writeStream,
+                manifest with { FormatVersion = 999 },
+                cancellationToken: cancellationToken);
         }
 
         mutable.Position = 0;
         var exception = await Assert.ThrowsAsync<DogadArtifactException>(() =>
-            serializer.ReadAsync(mutable));
+            serializer.ReadAsync(mutable, cancellationToken: cancellationToken));
 
         Assert.Equal("dogad.manifest.format-version-unsupported", exception.Code);
     }
 
     private static async Task<byte[]> WriteAsync(
         DogadArtifactSerializer serializer,
-        AdSnapshot snapshot)
+        AdSnapshot snapshot,
+        CancellationToken cancellationToken)
     {
         await using var stream = new MemoryStream();
-        await serializer.WriteAsync(snapshot, stream);
+        await serializer.WriteAsync(snapshot, stream, cancellationToken);
         return stream.ToArray();
     }
 
