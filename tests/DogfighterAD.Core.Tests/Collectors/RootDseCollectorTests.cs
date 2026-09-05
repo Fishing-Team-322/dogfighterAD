@@ -39,7 +39,8 @@ public sealed class RootDseCollectorTests
         Assert.Empty(coverage.Issues);
         Assert.Equal(1, coverage.ObservedItemCount);
 
-        var environment = Assert.NotNull(result.Fragment.Content.DirectoryEnvironment);
+        Assert.NotNull(result.Fragment.Content.DirectoryEnvironment);
+        var environment = result.Fragment.Content.DirectoryEnvironment!;
         Assert.Equal("dc01.mini.lab", environment.DnsHostName);
         Assert.Equal("DC=mini,DC=lab", environment.DefaultNamingContext);
         Assert.Equal("CN=Configuration,DC=mini,DC=lab", environment.ConfigurationNamingContext);
@@ -61,13 +62,15 @@ public sealed class RootDseCollectorTests
     [Fact]
     public async Task CollectAsync_MissingRequiredNamingContext_IsPartialNotClean()
     {
-        var rootDse = CreateHealthyRootDse();
+        var healthyResult = CreateHealthyRootDse();
+        var rootDseEntry = Assert.Single(healthyResult.Entries);
         var attributes = new Dictionary<string, IReadOnlyList<LdapAttributeValue>>(
-            rootDse.Attributes,
+            rootDseEntry.Attributes,
             StringComparer.OrdinalIgnoreCase);
         attributes.Remove("configurationNamingContext");
 
-        var client = new FakeLdapClient(rootDse with { Attributes = attributes });
+        var client = new FakeLdapClient(
+            new LdapSearchResult([rootDseEntry with { Attributes = attributes }]));
         var collector = new RootDseCollector(
             new FakeLdapClientFactory(client),
             new FixedTimeProvider(FixedNow));
