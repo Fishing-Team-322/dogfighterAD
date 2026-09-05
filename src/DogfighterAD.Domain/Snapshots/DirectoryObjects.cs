@@ -19,7 +19,6 @@ public sealed record AdDomain : AdDirectoryObject
 {
     public required string DnsName { get; init; }
     public string? NetbiosName { get; init; }
-    public string? DomainSid { get; init; }
     public int? FunctionalLevel { get; init; }
 }
 
@@ -71,6 +70,13 @@ public sealed record AdGroupPolicyObject : AdDirectoryObject
     public string? DisplayName { get; init; }
     public string? FileSystemPath { get; init; }
     public int? VersionNumber { get; init; }
+}
+
+public sealed record AdForeignSecurityPrincipal : AdDirectoryObject;
+
+public sealed record AdGenericDirectoryObject : AdDirectoryObject
+{
+    public required string ObjectClass { get; init; }
 }
 
 public sealed record AdGroupMembership(

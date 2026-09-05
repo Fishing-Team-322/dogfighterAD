@@ -24,7 +24,7 @@ public sealed record CapabilityCoverage
     public required DateTimeOffset StartedAt { get; init; }
     public required DateTimeOffset CompletedAt { get; init; }
     public int ObservedItemCount { get; init; }
-    public IReadOnlyList<string> CollectorIds { get; init; } = [];
+    public IReadOnlyList<CollectorIdentity> Collectors { get; init; } = [];
     public IReadOnlyList<CollectionIssue> Issues { get; init; } = [];
 }
 

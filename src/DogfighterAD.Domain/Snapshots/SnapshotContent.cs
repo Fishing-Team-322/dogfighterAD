@@ -8,6 +8,8 @@ public sealed record SnapshotContent
     public IReadOnlyList<AdComputer> Computers { get; init; } = [];
     public IReadOnlyList<AdOrganizationalUnit> OrganizationalUnits { get; init; } = [];
     public IReadOnlyList<AdGroupPolicyObject> GroupPolicyObjects { get; init; } = [];
+    public IReadOnlyList<AdForeignSecurityPrincipal> ForeignSecurityPrincipals { get; init; } = [];
+    public IReadOnlyList<AdGenericDirectoryObject> OtherDirectoryObjects { get; init; } = [];
     public IReadOnlyList<AdGroupMembership> GroupMemberships { get; init; } = [];
     public IReadOnlyList<AdGpoLink> GroupPolicyLinks { get; init; } = [];
     public IReadOnlyList<AdTrust> Trusts { get; init; } = [];
