@@ -24,7 +24,7 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore
-        run: dotnet restore src/DogfighterAD.Application/DogfighterAD.Application.csproj
+        run: dotnet restore src/DogfighterAD.Collectors.ActiveDirectory/DogfighterAD.Collectors.ActiveDirectory.csproj
 
       - name: Build
-        run: dotnet build src/DogfighterAD.Application/DogfighterAD.Application.csproj --configuration Release --no-restore
+        run: dotnet build src/DogfighterAD.Collectors.ActiveDirectory/DogfighterAD.Collectors.ActiveDirectory.csproj --configuration Release --no-restore
