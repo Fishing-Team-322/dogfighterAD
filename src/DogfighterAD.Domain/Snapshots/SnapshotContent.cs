@@ -13,6 +13,7 @@ public sealed record SnapshotContent
     public IReadOnlyList<AdGenericDirectoryObject> OtherDirectoryObjects { get; init; } = [];
     public IReadOnlyList<AdGroupMembership> GroupMemberships { get; init; } = [];
     public IReadOnlyList<AdGpoLink> GroupPolicyLinks { get; init; } = [];
+    public IReadOnlyList<AdGpoContainerPolicy> GroupPolicyContainerPolicies { get; init; } = [];
     public IReadOnlyList<AdTrust> Trusts { get; init; } = [];
     public IReadOnlyList<AdSecurityDescriptor> SecurityDescriptors { get; init; } = [];
     public IReadOnlyList<AdAce> Aces { get; init; } = [];
