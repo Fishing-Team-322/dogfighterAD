@@ -14,6 +14,7 @@ This document tracks what is actually implemented in the repository and what is 
 - [x] Stable versioned `FactId` generation.
 - [x] Capability coverage with explicit failure/partial/blocked states.
 - [x] Capability contract versions for future offline compatibility checks.
+- [x] Capability contract versions preserved conservatively during fragment merging.
 - [x] Deterministic snapshot fragment merging/assembly.
 - [x] Capability-driven collection planner with dependency-cycle detection.
 - [x] Staged collection executor with bounded concurrency, cancellation and timeouts.
@@ -22,21 +23,22 @@ This document tracks what is actually implemented in the repository and what is 
 - [x] Streaming paged LDAP entry API for large directory scans without transport-level full-result buffering.
 - [x] RootDSE discovery collector.
 - [x] Domain metadata collector using upstream RootDSE state.
-- [x] Portable GUID/SID/generalized-time conversion helpers for LDAP normalization.
+- [x] One-pass directory object collector for users, groups, computers and OUs.
+- [x] Portable GUID/SID/generalized-time/AD FileTime conversion helpers for LDAP normalization.
 - [x] GitHub Actions build/test pipeline.
-- [x] Core unit tests for fact IDs, capability compatibility, fragment merging, collection planning/execution and LDAP collector mapping.
+- [x] Core unit tests for fact IDs, capability compatibility, snapshot invariants, fragment merging, collection planning/execution and LDAP collector mapping.
 - [x] Living architecture, roadmap, capability-contract and development documentation.
 
-## Next: Collection Core v1
+## Collection Core v1
 
 Order matters. We build broad reliable collection before a large rule library.
 
 - [x] Domain object collector: default domain metadata.
-- [ ] Directory users collector.
-- [ ] Directory groups collector.
-- [ ] Directory computers collector.
-- [ ] Organizational units collector.
-- [ ] Group membership collector with nested relationship preservation.
+- [x] Directory users collector/capability.
+- [x] Directory groups collector/capability.
+- [x] Directory computers collector/capability.
+- [x] Organizational units collector/capability.
+- [ ] Group membership collector with nested relationship preservation, primary groups and foreign security principals.
 - [ ] Trust collector.
 - [ ] Security descriptor / ACL collector with correct object/inherited object GUID handling.
 - [ ] GPO metadata and link collection from LDAP.
@@ -48,13 +50,13 @@ Order matters. We build broad reliable collection before a large rule library.
 
 ## Collection Core v1.1
 
-- [ ] Kerberos-relevant account posture.
-- [ ] Delegation relationships.
+- [ ] Broader Kerberos-relevant account posture beyond the fields already captured in directory object v1.
+- [ ] Additional delegation relationships and host/protocol context.
 - [ ] LAPS posture and who-can-read relationships without collecting managed passwords by default.
 - [ ] gMSA posture and access relationships without collecting secret blobs by default.
 - [ ] AD CS directory topology and security-relevant configuration.
 - [ ] Sites/subnets and forest topology where needed for assessment logic.
-- [ ] Better partial-result accounting for referrals, inaccessible naming contexts and per-object failures.
+- [ ] Better partial-result accounting for referrals, inaccessible naming contexts and mid-stream LDAP failures.
 
 ## Analysis Core
 

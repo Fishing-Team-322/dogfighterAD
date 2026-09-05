@@ -43,25 +43,58 @@ Name and creation/change timestamps are collected when available. NetBIOS domain
 
 ### `directory.users` v1
 
-Status: planned.
+Owner: `ad.ldap.directory-objects`
 
-The exact v1 guarantees will be fixed before the collector is merged. The current domain model already reserves common security-relevant fields such as UAC, `adminCount`, password/logon timestamps, SPNs, SID history, encryption types and delegation targets.
+`Complete` guarantees that the requested default-domain subtree enumeration for user objects completed and every retained user has a usable stable `objectGUID`, distinguished name, `objectSid`, parseable `userAccountControl` and `primaryGroupID`.
+
+The collector requests and normalizes, when present:
+
+- `sAMAccountName`, `userPrincipalName`;
+- `adminCount`;
+- `pwdLastSet`, `lastLogonTimestamp`, `accountExpires`;
+- `msDS-SupportedEncryptionTypes`;
+- `servicePrincipalName`;
+- `sIDHistory`;
+- `msDS-AllowedToDelegateTo`;
+- object creation/change timestamps.
+
+Special AD FileTime values are not silently discarded. `pwdLastSet=0` is normalized as `PasswordMustChangeAtNextLogon=true`; `accountExpires=0` or `Int64.MaxValue` is normalized as `AccountNeverExpires=true`. Raw LDAP integer values remain available as observed facts for evidence/re-analysis.
 
 ### `directory.groups` v1
 
-Status: planned.
+Owner: `ad.ldap.directory-objects`
+
+`Complete` guarantees successful default-domain group enumeration and stable GUID/DN/SID identity for retained groups plus a parseable `groupType`. `sAMAccountName`, `adminCount`, name and timestamps are collected when present.
+
+Membership is intentionally **not** part of this capability; it belongs to `directory.memberships` so large/ranged `member` attributes can have their own collection logic and coverage.
 
 ### `directory.computers` v1
 
-Status: planned.
+Owner: `ad.ldap.directory-objects`
+
+`Complete` guarantees successful default-domain computer enumeration and stable GUID/DN/SID identity plus parseable `userAccountControl` for retained computers.
+
+The collector requests and normalizes, when present:
+
+- `sAMAccountName`, `dNSHostName`;
+- operating system/version;
+- `pwdLastSet`, `lastLogonTimestamp`;
+- `msDS-SupportedEncryptionTypes`;
+- `servicePrincipalName`;
+- `msDS-AllowedToDelegateTo`;
+- name and creation/change timestamps.
 
 ### `directory.ous` v1
 
-Status: planned.
+Owner: `ad.ldap.directory-objects`
+
+`Complete` guarantees successful default-domain OU enumeration and stable GUID/distinguished-name identity for retained OUs. Name and creation/change timestamps are collected when present.
+
+`ProtectFromAccidentalDeletion` is intentionally not guaranteed by v1 because reliable evaluation belongs with security-descriptor/ACL collection rather than a guessed standalone value.
 
 ### `directory.memberships` v1
 
-Status: planned. This capability will preserve explicit and primary-group membership as relationships rather than only materializing flattened group membership.
+Status: planned. This capability will preserve explicit and primary-group membership as relationships rather than only materializing flattened group membership. It will also account for foreign security principals required to keep cross-domain membership references resolvable.
 
 ### `directory.acls` v1
 

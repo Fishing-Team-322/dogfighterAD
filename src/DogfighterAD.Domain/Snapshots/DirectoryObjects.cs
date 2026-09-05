@@ -30,8 +30,10 @@ public sealed record AdUser : AdDirectoryObject
     public int? AdminCount { get; init; }
     public int? PrimaryGroupId { get; init; }
     public DateTimeOffset? PasswordLastSet { get; init; }
+    public bool? PasswordMustChangeAtNextLogon { get; init; }
     public DateTimeOffset? LastLogonTimestamp { get; init; }
     public DateTimeOffset? AccountExpires { get; init; }
+    public bool? AccountNeverExpires { get; init; }
     public int? SupportedEncryptionTypes { get; init; }
     public IReadOnlyList<string> ServicePrincipalNames { get; init; } = [];
     public IReadOnlyList<string> SidHistory { get; init; } = [];

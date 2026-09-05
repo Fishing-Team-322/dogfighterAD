@@ -48,10 +48,12 @@ Owns Active Directory protocol-specific collection code.
 
 Current responsibilities:
 - read-only LDAP transport using `System.DirectoryServices.Protocols`;
+- paged streaming enumeration for high-volume subtree scans;
 - RootDSE discovery;
 - default-domain metadata collection;
-- protocol-to-domain conversion for GUID, SID and LDAP timestamps;
-- mapping protocol data into snapshot fragments.
+- one-pass collection of users, groups, computers and OUs;
+- protocol-to-domain conversion for GUID, SID, generalized time and AD FileTime;
+- mapping protocol data into snapshot fragments with per-capability coverage.
 
 This project must not expose LDAP write operations to collectors. The snapshot-first phase does not modify target infrastructure.
 
@@ -67,6 +69,8 @@ These are deliberate constraints, not style preferences:
 6. Same logical inputs must produce deterministic logical snapshot ordering and stable fact IDs.
 7. Secrets are not collected merely because they are readable. The scanner targets security-relevant posture and access relationships.
 8. Active validation is a future, separate execution plane.
+9. Large LDAP subtree enumeration must not introduce an avoidable transport-level full-result buffer.
+10. Capability contract versions are durable guarantees and must survive fragment merge/serialization unchanged or conservatively weakened, never silently upgraded.
 
 ## Snapshot model
 
@@ -101,13 +105,21 @@ Capability versions are monotonic: version N+1 must preserve guarantees of versi
 
 The concrete built-in guarantees are documented in [CAPABILITIES.md](CAPABILITIES.md).
 
-## Stable identities
+## Collection ownership and query efficiency
+
+Collector ownership is chosen by data source and query shape, not by UI feature names. The `ad.ldap.directory-objects` collector owns users, groups, computers and OUs because they can be retrieved safely in a single default-domain paged subtree pass. Each capability still receives independent coverage and can become `Partial` without contaminating unrelated capability results.
+
+Memberships are deliberately separate because large group `member` attributes require range-aware collection and primary-group reconstruction. ACLs are separate because security descriptors require different controls/parsing. This keeps one-pass efficiency without creating one unmaintainable collector that owns all AD data.
+
+## Stable identities and AD special values
 
 AD objects use normalized stable identifiers rather than display names wherever possible. Facts use a versioned canonical hash algorithm so evidence identity is not coupled to collector implementation versions.
 
+AD sentinel values are normalized explicitly. For example, `pwdLastSet=0` and `accountExpires=0/Int64.MaxValue` retain their security meaning in normalized fields while raw values remain available as source observations.
+
 ## Current limitations
 
-The foundation is not yet a complete AD scanner. Current network collection covers RootDSE discovery and default-domain metadata. Users, groups, computers, OUs, memberships, trusts, ACLs, GPO data and ADCS collection are planned next.
+The foundation is not yet a complete AD scanner. Current network collection covers RootDSE discovery, default-domain metadata, and users/groups/computers/OUs. Memberships, foreign security principals required by cross-domain group membership, trusts, ACLs, GPO data and ADCS collection are planned next.
 
 Snapshot serialization (`.dogad`), persistent storage, rule execution, graph analysis and reporting are also not yet implemented.
 

@@ -19,8 +19,17 @@ internal static class LdapValueConverters
     public static string? GetSid(LdapSearchEntry entry, string attributeName)
     {
         var value = entry.GetBinaryValues(attributeName).SingleOrDefault();
-        return value is null ? null : TryFormatSid(value);
+        return value is null ? null : FormatSid(value);
     }
+
+    public static IReadOnlyList<string> GetSids(LdapSearchEntry entry, string attributeName) =>
+        entry.GetBinaryValues(attributeName)
+            .Select(value => FormatSid(value))
+            .Where(value => value is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
     public static int? GetInt32(LdapSearchEntry entry, string attributeName)
     {
@@ -28,6 +37,37 @@ internal static class LdapValueConverters
         return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : null;
+    }
+
+    public static long? GetInt64(LdapSearchEntry entry, string attributeName)
+    {
+        var value = entry.GetSingleTextValue(attributeName);
+        return long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    public static DateTimeOffset? GetFileTimeUtc(LdapSearchEntry entry, string attributeName)
+    {
+        var fileTime = GetInt64(entry, attributeName);
+        return FileTimeToUtc(fileTime);
+    }
+
+    public static DateTimeOffset? FileTimeToUtc(long? fileTime)
+    {
+        if (!fileTime.HasValue || fileTime.Value <= 0 || fileTime.Value == long.MaxValue)
+        {
+            return null;
+        }
+
+        try
+        {
+            return new DateTimeOffset(DateTime.FromFileTimeUtc(fileTime.Value));
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
     }
 
     public static DateTimeOffset? GetDateTimeOffset(LdapSearchEntry entry, string attributeName)
@@ -74,7 +114,7 @@ internal static class LdapValueConverters
         return labels.Length == 0 ? null : string.Join('.', labels);
     }
 
-    private static string? TryFormatSid(ReadOnlySpan<byte> sid)
+    public static string? FormatSid(ReadOnlySpan<byte> sid)
     {
         if (sid.Length < 8)
         {
