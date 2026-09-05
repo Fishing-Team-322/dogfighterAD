@@ -8,6 +8,7 @@ public interface ICollector
     string Id { get; }
     string Version { get; }
     IReadOnlySet<string> ProvidesCapabilities { get; }
+    IReadOnlySet<string> RequiresCapabilities { get; }
 
     Task<CollectorResult> CollectAsync(
         CollectionContext context,
