@@ -330,7 +330,7 @@ public sealed class DogadArtifactSerializer
     }
 }
 
-public sealed class DogadArtifactException : InvalidDataException
+public sealed class DogadArtifactException : IOException
 {
     public DogadArtifactException(string code, string message, Exception? innerException = null)
         : base($"{code}: {message}", innerException)
