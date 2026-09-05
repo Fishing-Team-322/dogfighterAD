@@ -53,7 +53,7 @@ public sealed class DogadArtifactSerializerTests
         var cancellationToken = TestContext.Current.CancellationToken;
         var serializer = new DogadArtifactSerializer();
         var artifact = await WriteAsync(serializer, CreateSnapshot(false), cancellationToken);
-        using var mutable = new MemoryStream(artifact.ToArray());
+        using var mutable = await CreateExpandableStreamAsync(artifact, cancellationToken);
         using (var archive = new ZipArchive(mutable, ZipArchiveMode.Update, leaveOpen: true))
         {
             archive.GetEntry(DogadFormat.SnapshotEntryName)!.Delete();
@@ -76,7 +76,7 @@ public sealed class DogadArtifactSerializerTests
         var cancellationToken = TestContext.Current.CancellationToken;
         var serializer = new DogadArtifactSerializer();
         var artifact = await WriteAsync(serializer, CreateSnapshot(false), cancellationToken);
-        using var mutable = new MemoryStream(artifact.ToArray());
+        using var mutable = await CreateExpandableStreamAsync(artifact, cancellationToken);
         using (var archive = new ZipArchive(mutable, ZipArchiveMode.Update, leaveOpen: true))
         {
             var manifestJsonOptions = new JsonSerializerOptions
@@ -110,6 +110,16 @@ public sealed class DogadArtifactSerializerTests
             serializer.ReadAsync(mutable, cancellationToken: cancellationToken));
 
         Assert.Equal("dogad.manifest.format-version-unsupported", exception.Code);
+    }
+
+    private static async Task<MemoryStream> CreateExpandableStreamAsync(
+        byte[] bytes,
+        CancellationToken cancellationToken)
+    {
+        var stream = new MemoryStream();
+        await stream.WriteAsync(bytes, cancellationToken);
+        stream.Position = 0;
+        return stream;
     }
 
     private static async Task<byte[]> WriteAsync(
