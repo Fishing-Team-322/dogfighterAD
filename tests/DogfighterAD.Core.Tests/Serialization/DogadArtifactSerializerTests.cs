@@ -79,13 +79,18 @@ public sealed class DogadArtifactSerializerTests
         using var mutable = new MemoryStream(artifact.ToArray());
         using (var archive = new ZipArchive(mutable, ZipArchiveMode.Update, leaveOpen: true))
         {
+            var manifestJsonOptions = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            };
             var entry = archive.GetEntry(DogadFormat.ManifestEntryName)!;
             DogadManifest manifest;
             await using (var readStream = entry.Open())
             {
                 manifest = await JsonSerializer.DeserializeAsync<DogadManifest>(
                     readStream,
-                    cancellationToken: cancellationToken)
+                    manifestJsonOptions,
+                    cancellationToken)
                     ?? throw new InvalidOperationException("Test manifest failed to deserialize.");
             }
 
@@ -96,7 +101,8 @@ public sealed class DogadArtifactSerializerTests
             await JsonSerializer.SerializeAsync(
                 writeStream,
                 manifest with { FormatVersion = 999 },
-                cancellationToken: cancellationToken);
+                manifestJsonOptions,
+                cancellationToken);
         }
 
         mutable.Position = 0;
