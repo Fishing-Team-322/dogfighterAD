@@ -109,7 +109,23 @@ These values are retained as evidence facts with LDAP provenance. Optional metad
 
 ### `gpo.links` v1
 
-Status: planned.
+Owner: `ad.ldap.gpo-links`
+
+This capability depends on complete `directory.core`, `directory.domains`, `directory.ous` and `gpo.metadata` data. It enumerates the default domain root and all known OUs in one paged LDAP subtree query and reads `gPLink` plus `gPOptions`.
+
+`Complete` guarantees that:
+
+- every prerequisite domain/OU container was returned by link enumeration;
+- each `gPLink` entry was parsed into a stable container→GPO relationship;
+- link order is retained as a 1-based order matching the sequence stored in the AD `gPLink` attribute;
+- raw link options are preserved together with normalized `Enabled` and `Enforced` flags (`0x1` disabled, `0x2` enforced);
+- each domain/OU has normalized container policy state from `gPOptions`, including Block Inheritance (`gPOptions` bit/value `1`);
+- linked GPO DNs resolve to GPO identities collected by `gpo.metadata`;
+- raw options and target-DN evidence retain LDAP provenance.
+
+Malformed link syntax, unknown linked GPOs, missing expected containers, invalid options, duplicate container results, or unsupported option bits produce `Partial` rather than silently dropping semantics.
+
+This capability does not read policy files from SYSVOL, calculate effective/RSoP policy, or actively validate whether a policy setting took effect on an endpoint.
 
 ### `gpo.sysvol` v1
 
