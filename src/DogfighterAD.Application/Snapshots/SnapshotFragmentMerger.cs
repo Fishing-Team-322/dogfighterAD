@@ -48,9 +48,11 @@ public sealed class SnapshotFragmentMerger
                 .SelectMany(x => x.Content.GroupPolicyLinks)
                 .Distinct()
                 .OrderBy(x => x.ContainerId.Value)
-                .ThenBy(x => x.GpoId.Value)
                 .ThenBy(x => x.Order)
+                .ThenBy(x => x.GpoId.Value)
                 .ToArray(),
+            GroupPolicyContainerPolicies = MergeGpoContainerPolicies(
+                fragments.SelectMany(x => x.Content.GroupPolicyContainerPolicies)),
             Trusts = fragments
                 .SelectMany(x => x.Content.Trusts)
                 .Distinct()
@@ -165,6 +167,29 @@ public sealed class SnapshotFragmentMerger
 
         return result
             .OrderBy(x => x.TargetObjectId.Value)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<AdGpoContainerPolicy> MergeGpoContainerPolicies(
+        IEnumerable<AdGpoContainerPolicy> policies)
+    {
+        var result = new List<AdGpoContainerPolicy>();
+        var seen = new HashSet<AdObjectId>();
+
+        foreach (var policy in policies)
+        {
+            if (!seen.Add(policy.ContainerId))
+            {
+                throw MergeError(
+                    "snapshot.fragment.duplicate-gpo-container-policy",
+                    $"Multiple collector fragments produced GPO inheritance state for container {policy.ContainerId}.");
+            }
+
+            result.Add(policy);
+        }
+
+        return result
+            .OrderBy(x => x.ContainerId.Value)
             .ToArray();
     }
 
