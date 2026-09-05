@@ -17,13 +17,14 @@ The project is built around a strict separation between collection, normalizatio
 
 ## Current implementation
 
-The foundation branch currently contains the snapshot/domain model, deterministic fragment assembly, capability-driven collection planning/execution, read-only LDAP transport, RootDSE discovery, stable fact identity, core tests, and GitHub Actions CI.
+The foundation branch currently contains the snapshot/domain model, deterministic fragment assembly, capability-driven collection planning/execution, read-only LDAP transport, RootDSE discovery, default-domain metadata collection, stable fact identity, core tests, and GitHub Actions CI.
 
-A full domain scan is **not implemented yet**. The next collection milestones are domain objects, users, groups, computers, OUs, memberships, trusts, ACLs, GPO data and portable snapshot serialization.
+A full domain scan is **not implemented yet**. The next collection milestones are users, groups, computers, OUs, memberships, trusts, ACLs, GPO data and portable snapshot serialization.
 
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Capability contracts](docs/CAPABILITIES.md)
 - [Roadmap and implementation status](docs/ROADMAP.md)
 - [Development guide](docs/DEVELOPMENT.md)
 - [Architecture Decision Records](docs/adr/)

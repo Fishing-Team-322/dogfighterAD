@@ -20,14 +20,17 @@ This document tracks what is actually implemented in the repository and what is 
 - [x] Dependency failure propagation: downstream collectors are blocked instead of producing misleading clean data.
 - [x] Read-only LDAP adapter with paging and binary attribute support.
 - [x] RootDSE discovery collector.
+- [x] Domain metadata collector using upstream RootDSE state.
+- [x] Portable GUID/SID/generalized-time conversion helpers for LDAP normalization.
 - [x] GitHub Actions build/test pipeline.
-- [x] Core unit tests for fact IDs, fragment merging, collection planning/execution and RootDSE mapping.
+- [x] Core unit tests for fact IDs, capability compatibility, fragment merging, collection planning/execution and LDAP collector mapping.
+- [x] Living architecture, roadmap, capability-contract and development documentation.
 
 ## Next: Collection Core v1
 
 Order matters. We build broad reliable collection before a large rule library.
 
-- [ ] Domain object collector: domain metadata.
+- [x] Domain object collector: default domain metadata.
 - [ ] Directory users collector.
 - [ ] Directory groups collector.
 - [ ] Directory computers collector.

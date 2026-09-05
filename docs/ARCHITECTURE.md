@@ -49,6 +49,8 @@ Owns Active Directory protocol-specific collection code.
 Current responsibilities:
 - read-only LDAP transport using `System.DirectoryServices.Protocols`;
 - RootDSE discovery;
+- default-domain metadata collection;
+- protocol-to-domain conversion for GUID, SID and LDAP timestamps;
 - mapping protocol data into snapshot fragments.
 
 This project must not expose LDAP write operations to collectors. The snapshot-first phase does not modify target infrastructure.
@@ -95,7 +97,9 @@ Every persisted coverage record contains a `ContractVersion`.
 
 A rule declares a minimum required contract version. If a snapshot is older than the rule requirement, the rule must not report the environment as clean; it must be treated as not verifiable with that snapshot.
 
-Capability versions are monotonic: version N+1 must preserve guarantees of version N. If semantics cannot remain compatible, introduce a new capability ID instead of silently changing meaning.
+Capability versions are monotonic: version N+1 must preserve guarantees of version N. If semantics cannot remain compatible, introduce a new capability ID instead.
+
+The concrete built-in guarantees are documented in [CAPABILITIES.md](CAPABILITIES.md).
 
 ## Stable identities
 
@@ -103,7 +107,7 @@ AD objects use normalized stable identifiers rather than display names wherever 
 
 ## Current limitations
 
-The foundation is not yet a complete AD scanner. Currently implemented network collection is RootDSE discovery. Users, groups, computers, OUs, memberships, trusts, ACLs, GPO data and ADCS collection are planned next.
+The foundation is not yet a complete AD scanner. Current network collection covers RootDSE discovery and default-domain metadata. Users, groups, computers, OUs, memberships, trusts, ACLs, GPO data and ADCS collection are planned next.
 
 Snapshot serialization (`.dogad`), persistent storage, rule execution, graph analysis and reporting are also not yet implemented.
 
