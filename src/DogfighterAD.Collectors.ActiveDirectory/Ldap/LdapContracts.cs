@@ -40,6 +40,7 @@ public sealed record LdapSearchRequest
     public required LdapSearchScope Scope { get; init; }
     public IReadOnlyList<string> Attributes { get; init; } = [];
     public int PageSize { get; init; }
+    public LdapSecurityDescriptorSections SecurityDescriptorSections { get; init; }
 }
 
 public enum LdapSearchScope
@@ -47,6 +48,16 @@ public enum LdapSearchScope
     Base,
     OneLevel,
     Subtree
+}
+
+[Flags]
+public enum LdapSecurityDescriptorSections
+{
+    None = 0,
+    Owner = 1,
+    Group = 2,
+    Dacl = 4,
+    Sacl = 8
 }
 
 public sealed record LdapSearchResult(IReadOnlyList<LdapSearchEntry> Entries);

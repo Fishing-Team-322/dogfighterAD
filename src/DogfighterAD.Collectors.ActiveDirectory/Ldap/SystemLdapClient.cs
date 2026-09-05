@@ -50,6 +50,12 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
 
 internal sealed class SystemLdapClient : IReadOnlyLdapClient
 {
+    private const LdapSecurityDescriptorSections AllSecurityDescriptorSections =
+        LdapSecurityDescriptorSections.Owner |
+        LdapSecurityDescriptorSections.Group |
+        LdapSecurityDescriptorSections.Dacl |
+        LdapSecurityDescriptorSections.Sacl;
+
     private readonly LdapConnection _connection;
     private readonly TimeSpan _requestTimeout;
     private bool _disposed;
@@ -95,6 +101,12 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
                 request.Filter,
                 MapScope(request.Scope),
                 request.Attributes.ToArray());
+
+            if (request.SecurityDescriptorSections != LdapSecurityDescriptorSections.None)
+            {
+                nativeRequest.Controls.Add(new SecurityDescriptorFlagControl(
+                    MapSecurityMasks(request.SecurityDescriptorSections)));
+            }
 
             PageResultRequestControl? pagingControl = null;
             if (request.PageSize > 0)
@@ -232,6 +244,33 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
         _ => throw new ArgumentOutOfRangeException(nameof(scope), scope, "Unknown LDAP search scope.")
     };
 
+    internal static SecurityMasks MapSecurityMasks(LdapSecurityDescriptorSections sections)
+    {
+        var result = SecurityMasks.None;
+
+        if (sections.HasFlag(LdapSecurityDescriptorSections.Owner))
+        {
+            result |= SecurityMasks.Owner;
+        }
+
+        if (sections.HasFlag(LdapSecurityDescriptorSections.Group))
+        {
+            result |= SecurityMasks.Group;
+        }
+
+        if (sections.HasFlag(LdapSecurityDescriptorSections.Dacl))
+        {
+            result |= SecurityMasks.Dacl;
+        }
+
+        if (sections.HasFlag(LdapSecurityDescriptorSections.Sacl))
+        {
+            result |= SecurityMasks.Sacl;
+        }
+
+        return result;
+    }
+
     private static void ValidateRequest(LdapSearchRequest request)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Filter);
@@ -239,6 +278,13 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
         if (request.PageSize < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(request), "LDAP page size cannot be negative.");
+        }
+
+        if ((request.SecurityDescriptorSections & ~AllSecurityDescriptorSections) != 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(request),
+                "LDAP security descriptor selection contains unsupported flags.");
         }
 
         if (request.Attributes.Any(string.IsNullOrWhiteSpace))
