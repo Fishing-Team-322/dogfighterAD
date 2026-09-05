@@ -112,6 +112,28 @@ public sealed class DogadArtifactSerializerTests
         Assert.Equal("dogad.manifest.format-version-unsupported", exception.Code);
     }
 
+    [Fact]
+    public async Task Read_UnexpectedEntryIsRejected()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var serializer = new DogadArtifactSerializer();
+        var artifact = await WriteAsync(serializer, CreateSnapshot(false), cancellationToken);
+        using var mutable = await CreateExpandableStreamAsync(artifact, cancellationToken);
+        using (var archive = new ZipArchive(mutable, ZipArchiveMode.Update, leaveOpen: true))
+        {
+            var unexpected = archive.CreateEntry("attachments/hidden.bin", CompressionLevel.NoCompression);
+            unexpected.LastWriteTime = new DateTimeOffset(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
+            await using var stream = unexpected.Open();
+            await stream.WriteAsync([1, 2, 3, 4], cancellationToken);
+        }
+
+        mutable.Position = 0;
+        var exception = await Assert.ThrowsAsync<DogadArtifactException>(() =>
+            serializer.ReadAsync(mutable, cancellationToken: cancellationToken));
+
+        Assert.Equal("dogad.container.entry-unexpected", exception.Code);
+    }
+
     private static async Task<MemoryStream> CreateExpandableStreamAsync(
         byte[] bytes,
         CancellationToken cancellationToken)
