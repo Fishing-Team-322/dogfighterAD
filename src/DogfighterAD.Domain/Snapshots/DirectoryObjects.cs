@@ -72,6 +72,7 @@ public sealed record AdGroupPolicyObject : AdDirectoryObject
     public string? DisplayName { get; init; }
     public string? FileSystemPath { get; init; }
     public int? VersionNumber { get; init; }
+    public int? Flags { get; init; }
 }
 
 public sealed record AdForeignSecurityPrincipal : AdDirectoryObject;
