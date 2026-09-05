@@ -19,6 +19,7 @@ This document tracks what is actually implemented in the repository and what is 
 - [x] Staged collection executor with bounded concurrency, cancellation and timeouts.
 - [x] Dependency failure propagation: downstream collectors are blocked instead of producing misleading clean data.
 - [x] Read-only LDAP adapter with paging and binary attribute support.
+- [x] Streaming paged LDAP entry API for large directory scans without transport-level full-result buffering.
 - [x] RootDSE discovery collector.
 - [x] Domain metadata collector using upstream RootDSE state.
 - [x] Portable GUID/SID/generalized-time conversion helpers for LDAP normalization.

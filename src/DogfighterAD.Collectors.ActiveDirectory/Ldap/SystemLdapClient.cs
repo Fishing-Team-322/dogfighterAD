@@ -1,5 +1,6 @@
 using System.DirectoryServices.Protocols;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 
 namespace DogfighterAD.Collectors.ActiveDirectory.Ldap;
 
@@ -65,11 +66,24 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
         LdapSearchRequest request,
         CancellationToken cancellationToken)
     {
+        var entries = new List<LdapSearchEntry>();
+
+        await foreach (var entry in SearchEntriesAsync(request, cancellationToken))
+        {
+            entries.Add(entry);
+        }
+
+        return new LdapSearchResult(entries);
+    }
+
+    public async IAsyncEnumerable<LdapSearchEntry> SearchEntriesAsync(
+        LdapSearchRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(request);
         ValidateRequest(request);
 
-        var entries = new List<LdapSearchEntry>();
         byte[]? cookie = null;
 
         do
@@ -100,7 +114,8 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
 
             foreach (SearchResultEntry entry in nativeResponse.Entries)
             {
-                entries.Add(MapEntry(entry));
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return MapEntry(entry);
             }
 
             if (pagingControl is null)
@@ -114,8 +129,6 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
                 .FirstOrDefault();
         }
         while (cookie is { Length: > 0 });
-
-        return new LdapSearchResult(entries);
     }
 
     public ValueTask DisposeAsync()

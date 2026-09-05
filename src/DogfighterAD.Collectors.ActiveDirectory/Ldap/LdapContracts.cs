@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace DogfighterAD.Collectors.ActiveDirectory.Ldap;
 
 public interface IReadOnlyLdapClientFactory
@@ -12,6 +14,23 @@ public interface IReadOnlyLdapClient : IAsyncDisposable
     Task<LdapSearchResult> SearchAsync(
         LdapSearchRequest request,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Streams search entries to the caller. Implementations should avoid buffering the complete
+    /// directory result. The default implementation preserves compatibility for test/adaptor clients
+    /// by falling back to SearchAsync.
+    /// </summary>
+    async IAsyncEnumerable<LdapSearchEntry> SearchEntriesAsync(
+        LdapSearchRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var result = await SearchAsync(request, cancellationToken).ConfigureAwait(false);
+        foreach (var entry in result.Entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return entry;
+        }
+    }
 }
 
 public sealed record LdapSearchRequest

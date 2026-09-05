@@ -30,6 +30,14 @@ A collector must:
 11. have unit tests for mapping and contract behavior;
 12. update `docs/ROADMAP.md` when implementation status changes.
 
+### LDAP query shape
+
+Small bounded lookups such as RootDSE or a single base object may use `SearchAsync`.
+
+Large `Subtree`/paged scans should use `SearchEntriesAsync` so the production LDAP client can release each LDAP page instead of accumulating the complete server result before mapping begins. Do not convert a streaming search back into a giant intermediate list unless the algorithm genuinely requires the entire set at once.
+
+Collectors may still build normalized snapshot collections in memory during the current foundation phase. Snapshot assembly/storage will later be benchmarked separately; the transport layer must not add a second avoidable full-result buffer.
+
 ### Capability contract versions
 
 When a collector adds data that existing rules do not depend on, the capability version can normally remain unchanged.
