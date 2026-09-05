@@ -1,5 +1,4 @@
 using System.IO.Compression;
-using System.Text;
 using System.Text.Json;
 using DogfighterAD.Domain.Snapshots;
 using DogfighterAD.Serialization;
@@ -48,7 +47,7 @@ public sealed class DogadArtifactSerializerTests
     }
 
     [Fact]
-    public async Task Read_TamperedPayloadFailsHashValidation()
+    public async Task Read_TamperedPayloadWithSameLengthFailsHashValidation()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var serializer = new DogadArtifactSerializer();
@@ -56,18 +55,30 @@ public sealed class DogadArtifactSerializerTests
         using var mutable = await CreateExpandableStreamAsync(artifact, cancellationToken);
         using (var archive = new ZipArchive(mutable, ZipArchiveMode.Update, leaveOpen: true))
         {
-            archive.GetEntry(DogadFormat.SnapshotEntryName)!.Delete();
+            var original = archive.GetEntry(DogadFormat.SnapshotEntryName)!;
+            byte[] tampered;
+            await using (var input = original.Open())
+            {
+                using var copy = new MemoryStream();
+                await input.CopyToAsync(copy, cancellationToken);
+                tampered = copy.ToArray();
+            }
+
+            Assert.NotEmpty(tampered);
+            tampered[0] ^= 0x01;
+            original.Delete();
+
             var replacement = archive.CreateEntry(DogadFormat.SnapshotEntryName, CompressionLevel.NoCompression);
             replacement.LastWriteTime = new DateTimeOffset(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
-            await using var stream = replacement.Open();
-            await stream.WriteAsync(Encoding.UTF8.GetBytes("{}"), cancellationToken);
+            await using var output = replacement.Open();
+            await output.WriteAsync(tampered, cancellationToken);
         }
 
         mutable.Position = 0;
         var exception = await Assert.ThrowsAsync<DogadArtifactException>(() =>
             serializer.ReadAsync(mutable, cancellationToken: cancellationToken));
 
-        Assert.Equal("dogad.payload.length-mismatch", exception.Code);
+        Assert.Equal("dogad.payload.hash-mismatch", exception.Code);
     }
 
     [Fact]
@@ -124,7 +135,7 @@ public sealed class DogadArtifactSerializerTests
             var unexpected = archive.CreateEntry("attachments/hidden.bin", CompressionLevel.NoCompression);
             unexpected.LastWriteTime = new DateTimeOffset(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
             await using var stream = unexpected.Open();
-            await stream.WriteAsync([1, 2, 3, 4], cancellationToken);
+            await stream.WriteAsync(new byte[] { 1, 2, 3, 4 }, cancellationToken);
         }
 
         mutable.Position = 0;
