@@ -169,6 +169,8 @@ public static class SnapshotInvariantValidator
             }
         }
 
+        ValidateGpoSysvol(content, knownGpoIds, violations);
+
         var descriptorTargets = new HashSet<AdObjectId>();
         foreach (var descriptor in content.SecurityDescriptors)
         {
@@ -201,6 +203,84 @@ public static class SnapshotInvariantValidator
                 violations.Add(new(
                     "snapshot.ace.missing-trustee",
                     $"ACE for target {ace.TargetObjectId} has no trustee SID."));
+            }
+        }
+    }
+
+    private static void ValidateGpoSysvol(
+        SnapshotContent content,
+        IReadOnlySet<AdObjectId> knownGpoIds,
+        ICollection<SnapshotInvariantViolation> violations)
+    {
+        var fileKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in content.GroupPolicyFiles)
+        {
+            if (!knownGpoIds.Contains(file.GpoId))
+            {
+                violations.Add(new(
+                    "snapshot.gpo-sysvol-file.unknown-gpo",
+                    $"SYSVOL file '{file.RelativePath}' references unknown GPO {file.GpoId}."));
+            }
+
+            if (string.IsNullOrWhiteSpace(file.RelativePath) || file.RelativePath.StartsWith("..", StringComparison.Ordinal))
+            {
+                violations.Add(new(
+                    "snapshot.gpo-sysvol-file.invalid-path",
+                    $"SYSVOL file for GPO {file.GpoId} has an invalid relative path."));
+            }
+
+            if (file.Length < 0)
+            {
+                violations.Add(new(
+                    "snapshot.gpo-sysvol-file.invalid-length",
+                    $"SYSVOL file '{file.RelativePath}' for GPO {file.GpoId} has negative length {file.Length}."));
+            }
+
+            if (file.Sha256 is not null &&
+                (file.Sha256.Length != 64 || file.Sha256.Any(character => !Uri.IsHexDigit(character))))
+            {
+                violations.Add(new(
+                    "snapshot.gpo-sysvol-file.invalid-hash",
+                    $"SYSVOL file '{file.RelativePath}' for GPO {file.GpoId} has an invalid SHA-256 value."));
+            }
+
+            if (!fileKeys.Add($"{file.GpoId}|{file.RelativePath}"))
+            {
+                violations.Add(new(
+                    "snapshot.gpo-sysvol-file.duplicate",
+                    $"SYSVOL file '{file.RelativePath}' for GPO {file.GpoId} appears more than once."));
+            }
+        }
+
+        foreach (var setting in content.GroupPolicySettings)
+        {
+            if (!knownGpoIds.Contains(setting.GpoId))
+            {
+                violations.Add(new(
+                    "snapshot.gpo-setting.unknown-gpo",
+                    $"GPO setting '{setting.Key}' references unknown GPO {setting.GpoId}."));
+            }
+
+            if (setting.Sequence < 1 || string.IsNullOrWhiteSpace(setting.SourceRelativePath) || string.IsNullOrWhiteSpace(setting.Key))
+            {
+                violations.Add(new(
+                    "snapshot.gpo-setting.identity-invalid",
+                    $"GPO setting for {setting.GpoId} has invalid source/sequence/key identity."));
+            }
+
+            if (setting.DataLength < 0)
+            {
+                violations.Add(new(
+                    "snapshot.gpo-setting.invalid-data-length",
+                    $"GPO setting '{setting.Key}' for {setting.GpoId} has negative data length {setting.DataLength}."));
+            }
+
+            if ((setting.Disposition is FactDisposition.Redacted or FactDisposition.MetadataOnly) &&
+                setting.Value is not null)
+            {
+                violations.Add(new(
+                    "snapshot.gpo-setting.redaction-invalid",
+                    $"GPO setting '{setting.Key}' for {setting.GpoId} is {setting.Disposition} but still contains a value."));
             }
         }
     }

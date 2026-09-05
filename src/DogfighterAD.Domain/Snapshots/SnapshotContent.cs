@@ -14,6 +14,8 @@ public sealed record SnapshotContent
     public IReadOnlyList<AdGroupMembership> GroupMemberships { get; init; } = [];
     public IReadOnlyList<AdGpoLink> GroupPolicyLinks { get; init; } = [];
     public IReadOnlyList<AdGpoContainerPolicy> GroupPolicyContainerPolicies { get; init; } = [];
+    public IReadOnlyList<AdGpoSysvolFile> GroupPolicyFiles { get; init; } = [];
+    public IReadOnlyList<AdGpoSetting> GroupPolicySettings { get; init; } = [];
     public IReadOnlyList<AdTrust> Trusts { get; init; } = [];
     public IReadOnlyList<AdSecurityDescriptor> SecurityDescriptors { get; init; } = [];
     public IReadOnlyList<AdAce> Aces { get; init; } = [];

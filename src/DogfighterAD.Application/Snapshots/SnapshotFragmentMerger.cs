@@ -53,6 +53,16 @@ public sealed class SnapshotFragmentMerger
                 .ToArray(),
             GroupPolicyContainerPolicies = MergeGpoContainerPolicies(
                 fragments.SelectMany(x => x.Content.GroupPolicyContainerPolicies)),
+            GroupPolicyFiles = MergeGpoFiles(
+                fragments.SelectMany(x => x.Content.GroupPolicyFiles)),
+            GroupPolicySettings = fragments
+                .SelectMany(x => x.Content.GroupPolicySettings)
+                .Distinct()
+                .OrderBy(x => x.GpoId.Value)
+                .ThenBy(x => x.SourceRelativePath, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.Sequence)
+                .ThenBy(x => x.Key, StringComparer.Ordinal)
+                .ToArray(),
             Trusts = fragments
                 .SelectMany(x => x.Content.Trusts)
                 .Distinct()
@@ -190,6 +200,31 @@ public sealed class SnapshotFragmentMerger
 
         return result
             .OrderBy(x => x.ContainerId.Value)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<AdGpoSysvolFile> MergeGpoFiles(
+        IEnumerable<AdGpoSysvolFile> files)
+    {
+        var result = new List<AdGpoSysvolFile>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var file in files)
+        {
+            var key = $"{file.GpoId}|{file.RelativePath}";
+            if (!seen.Add(key))
+            {
+                throw MergeError(
+                    "snapshot.fragment.duplicate-gpo-sysvol-file",
+                    $"Multiple collector fragments produced SYSVOL file '{file.RelativePath}' for GPO {file.GpoId}.");
+            }
+
+            result.Add(file);
+        }
+
+        return result
+            .OrderBy(x => x.GpoId.Value)
+            .ThenBy(x => x.RelativePath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 

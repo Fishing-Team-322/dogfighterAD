@@ -28,7 +28,7 @@ public sealed class BuiltInCollectionProfilesTests
         Assert.Contains(CollectionCapabilities.DirectoryAcls, profile.RequestedCapabilities);
         Assert.Contains(CollectionCapabilities.GroupPolicyMetadata, profile.RequestedCapabilities);
         Assert.Contains(CollectionCapabilities.GroupPolicyLinks, profile.RequestedCapabilities);
-        Assert.DoesNotContain(CollectionCapabilities.GroupPolicySysvol, profile.RequestedCapabilities);
+        Assert.Contains(CollectionCapabilities.GroupPolicySysvol, profile.RequestedCapabilities);
         Assert.DoesNotContain(CollectionCapabilities.AdcsDirectory, profile.RequestedCapabilities);
         Assert.Equal(4, profile.MaxConcurrency);
     }
