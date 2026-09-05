@@ -59,7 +59,7 @@ public sealed class DomainMetadataCollector : ICollector
 
         if (string.IsNullOrWhiteSpace(baseDn))
         {
-            var completedAt = _timeProvider.GetUtcNow();
+            var failureCompletedAt = _timeProvider.GetUtcNow();
             return new CollectorResult(
                 CollectorId,
                 CollectorVersion,
@@ -68,7 +68,7 @@ public sealed class DomainMetadataCollector : ICollector
                     "collection.domain.default-naming-context-unavailable",
                     "Domain metadata collection requires RootDSE defaultNamingContext.",
                     startedAt,
-                    completedAt));
+                    failureCompletedAt));
         }
 
         await using var client = await _ldapClientFactory
