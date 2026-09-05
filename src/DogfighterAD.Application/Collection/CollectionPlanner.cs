@@ -44,6 +44,13 @@ public sealed class CollectionPlanner
             .GroupBy(x => x.Id, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
 
+        var selectedCapabilitiesByCollector = selectedByCapability
+            .GroupBy(pair => pair.Value.Id, pair => pair.Key, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<string>)group.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
+                StringComparer.Ordinal);
+
         var dependencies = selectedCollectors.Values.ToDictionary(
             collector => collector.Id,
             collector => collector.RequiresCapabilities
@@ -52,7 +59,10 @@ public sealed class CollectionPlanner
                 .ToHashSet(StringComparer.Ordinal),
             StringComparer.Ordinal);
 
-        var stages = BuildStages(selectedCollectors, dependencies);
+        var stages = BuildStages(
+            selectedCollectors,
+            selectedCapabilitiesByCollector,
+            dependencies);
 
         return new CollectionPlan
         {
@@ -148,6 +158,7 @@ public sealed class CollectionPlanner
 
     private static IReadOnlyList<CollectionStage> BuildStages(
         IReadOnlyDictionary<string, ICollector> selectedCollectors,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> selectedCapabilitiesByCollector,
         IReadOnlyDictionary<string, HashSet<string>> dependencies)
     {
         var remaining = dependencies.ToDictionary(
@@ -174,7 +185,9 @@ public sealed class CollectionPlanner
             }
 
             var stageCollectors = readyIds
-                .Select(id => selectedCollectors[id])
+                .Select(id => new PlannedCollector(
+                    selectedCollectors[id],
+                    selectedCapabilitiesByCollector[id]))
                 .ToArray();
 
             stages.Add(new CollectionStage(stageIndex++, stageCollectors));
@@ -289,7 +302,11 @@ public sealed record CollectionPlan
 
 public sealed record CollectionStage(
     int Index,
-    IReadOnlyList<ICollector> Collectors);
+    IReadOnlyList<PlannedCollector> Collectors);
+
+public sealed record PlannedCollector(
+    ICollector Collector,
+    IReadOnlyList<string> SelectedCapabilities);
 
 public sealed record CollectionExecutionPolicy(
     int MaxConcurrency,

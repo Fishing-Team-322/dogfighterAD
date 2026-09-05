@@ -44,6 +44,7 @@ public enum CapabilityStatus
     Complete,
     Partial,
     Failed,
+    Blocked,
     Unsupported,
     NotApplicable
 }
