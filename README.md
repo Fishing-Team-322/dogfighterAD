@@ -17,9 +17,9 @@ The project is built around a strict separation between collection, normalizatio
 
 ## Current implementation
 
-The foundation branch currently contains the snapshot/domain model, deterministic fragment assembly, capability-driven collection planning/execution, read-only paged/streaming LDAP transport, RootDSE discovery, default-domain metadata, and one-pass collection of users, groups, computers and OUs. Stable fact identity, capability-version compatibility, core tests, and GitHub Actions CI are also in place.
+The foundation branch currently contains the snapshot/domain model, deterministic fragment assembly, capability-driven collection planning/execution, read-only paged/streaming LDAP transport, RootDSE discovery, default-domain metadata, one-pass collection of users/groups/computers/OUs, and range-safe group membership collection with direct nested-group edges, primary groups and foreign security principals. Stable fact identity, capability-version compatibility, core tests, and GitHub Actions CI are also in place.
 
-A full AD assessment is **not implemented yet**. The next collection milestones are memberships/foreign security principals, trusts, ACLs, GPO data, SYSVOL settings and portable snapshot serialization.
+A full AD assessment is **not implemented yet**. The next collection milestones are trusts, ACLs, GPO data, SYSVOL settings and portable snapshot serialization.
 
 ## Documentation
 

@@ -24,6 +24,8 @@ This document tracks what is actually implemented in the repository and what is 
 - [x] RootDSE discovery collector.
 - [x] Domain metadata collector using upstream RootDSE state.
 - [x] One-pass directory object collector for users, groups, computers and OUs.
+- [x] Range-aware AD `member` retrieval that follows `member;range=start-end` chunks through the terminal range.
+- [x] Group membership collection with direct group-to-group edges, primary groups, FSP support and explicit partial-result accounting.
 - [x] Portable GUID/SID/generalized-time/AD FileTime conversion helpers for LDAP normalization.
 - [x] GitHub Actions build/test pipeline.
 - [x] Core unit tests for fact IDs, capability compatibility, snapshot invariants, fragment merging, collection planning/execution and LDAP collector mapping.
@@ -38,7 +40,7 @@ Order matters. We build broad reliable collection before a large rule library.
 - [x] Directory groups collector/capability.
 - [x] Directory computers collector/capability.
 - [x] Organizational units collector/capability.
-- [ ] Group membership collector with nested relationship preservation, primary groups and foreign security principals.
+- [x] Group membership collector with direct nested-group relationship preservation, primary groups and foreign security principals.
 - [ ] Trust collector.
 - [ ] Security descriptor / ACL collector with correct object/inherited object GUID handling.
 - [ ] GPO metadata and link collection from LDAP.

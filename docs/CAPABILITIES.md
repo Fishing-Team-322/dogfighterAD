@@ -94,7 +94,23 @@ Owner: `ad.ldap.directory-objects`
 
 ### `directory.memberships` v1
 
-Status: planned. This capability will preserve explicit and primary-group membership as relationships rather than only materializing flattened group membership. It will also account for foreign security principals required to keep cross-domain membership references resolvable.
+Owner: `ad.ldap.group-memberships`
+
+This capability depends on complete `directory.core`, `directory.users`, `directory.groups` and `directory.computers` data. A downstream membership scan is blocked rather than treated as clean when those prerequisites are unavailable.
+
+`Complete` guarantees that:
+
+- direct `member` relationships were enumerated for the default domain's groups;
+- Active Directory ranged `member;range=start-end` responses were followed until a terminal range was reached;
+- direct group-to-group relationships are preserved as edges, so nested membership can be evaluated later without flattening source evidence;
+- `primaryGroupID` relationships observed for principals are reconstructed against the corresponding group SID and stored as `MembershipSource.PrimaryGroup` edges;
+- direct member DNs are resolved to stable snapshot object identities;
+- foreign security principals and other otherwise-unmodeled directory objects needed to keep membership references resolvable are materialized as supporting snapshot objects;
+- source observations retain direct member DNs and primary-group values with LDAP provenance.
+
+The collector deliberately does **not** precompute transitive group membership. Analysis code should traverse the direct group-to-group graph when transitive membership is required. This keeps the snapshot evidence-oriented and prevents multiplicative relationship expansion during collection.
+
+An incomplete AD member range, an unresolved member DN, an unusable supporting identity, a missing referenced group, or a primary group that cannot be resolved prevents `Complete` coverage and produces `Partial`/failure evidence instead of a misleading clean result.
 
 ### `directory.acls` v1
 

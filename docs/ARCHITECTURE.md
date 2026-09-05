@@ -52,6 +52,7 @@ Current responsibilities:
 - RootDSE discovery;
 - default-domain metadata collection;
 - one-pass collection of users, groups, computers and OUs;
+- range-aware group membership collection, including primary-group reconstruction and foreign security principal support;
 - protocol-to-domain conversion for GUID, SID, generalized time and AD FileTime;
 - mapping protocol data into snapshot fragments with per-capability coverage.
 
@@ -71,6 +72,7 @@ These are deliberate constraints, not style preferences:
 8. Active validation is a future, separate execution plane.
 9. Large LDAP subtree enumeration must not introduce an avoidable transport-level full-result buffer.
 10. Capability contract versions are durable guarantees and must survive fragment merge/serialization unchanged or conservatively weakened, never silently upgraded.
+11. Collection stores direct relationships and source evidence; transitive group membership and attack-path expansion belong to analysis, not collection.
 
 ## Snapshot model
 
@@ -109,7 +111,7 @@ The concrete built-in guarantees are documented in [CAPABILITIES.md](CAPABILITIE
 
 Collector ownership is chosen by data source and query shape, not by UI feature names. The `ad.ldap.directory-objects` collector owns users, groups, computers and OUs because they can be retrieved safely in a single default-domain paged subtree pass. Each capability still receives independent coverage and can become `Partial` without contaminating unrelated capability results.
 
-Memberships are deliberately separate because large group `member` attributes require range-aware collection and primary-group reconstruction. ACLs are separate because security descriptors require different controls/parsing. This keeps one-pass efficiency without creating one unmaintainable collector that owns all AD data.
+Memberships are deliberately separate because large group `member` attributes require range-aware collection and primary-group reconstruction. The membership collector stores direct group-to-member and group-to-group edges and does not flatten transitive membership. ACLs are separate because security descriptors require different controls/parsing. This keeps one-pass efficiency without creating one unmaintainable collector that owns all AD data.
 
 ## Stable identities and AD special values
 
@@ -119,7 +121,7 @@ AD sentinel values are normalized explicitly. For example, `pwdLastSet=0` and `a
 
 ## Current limitations
 
-The foundation is not yet a complete AD scanner. Current network collection covers RootDSE discovery, default-domain metadata, and users/groups/computers/OUs. Memberships, foreign security principals required by cross-domain group membership, trusts, ACLs, GPO data and ADCS collection are planned next.
+The foundation is not yet a complete AD scanner. Current network collection covers RootDSE discovery, default-domain metadata, users/groups/computers/OUs, and group memberships including primary groups and foreign security principals. Trusts, ACLs, GPO data, SYSVOL settings and ADCS collection are planned next.
 
 Snapshot serialization (`.dogad`), persistent storage, rule execution, graph analysis and reporting are also not yet implemented.
 
