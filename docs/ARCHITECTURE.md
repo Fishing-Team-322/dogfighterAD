@@ -5,11 +5,12 @@ DogfighterAD is a snapshot-first, evidence-first Active Directory security asses
 ## Core data flow
 
 ```text
-Target AD
+Target AD / SYSVOL
   -> Collection Planner
   -> read-only Collectors
   -> Snapshot Fragments
   -> deterministic Snapshot assembly
+  -> .dogad portable artifact
   -> offline Analysis / Rules / Graph projections
   -> Findings + Evidence
   -> Reports / API / UI
@@ -20,127 +21,67 @@ Findings / Paths -> Validation Planner -> separate Validation Node
 
 ## Module boundaries
 
-### DogfighterAD.Domain
-Owns canonical security-assessment data structures. It must not depend on LDAP, SQLite, HTML, CLI, network clients, or UI frameworks.
+### `DogfighterAD.Domain`
 
-Current responsibilities:
-- versioned snapshot schema;
-- normalized AD object identities and relationships;
-- normalized DACL state and ACE semantics;
-- collection coverage and issues;
-- observed facts and provenance;
-- stable fact identity;
-- findings/evidence domain structures;
-- capability contract compatibility.
+Canonical security-assessment structures only: versioned snapshots, AD identities/relationships, GPO/SYSVOL normalized records, descriptors/ACEs, coverage/issues, observed facts/provenance, stable fact identity, findings/evidence and capability compatibility. It must not depend on LDAP, ZIP/JSON serialization, SQLite, HTML, CLI, network clients or UI frameworks.
 
-### DogfighterAD.Application
-Owns orchestration and contracts between the domain and infrastructure.
+### `DogfighterAD.Application`
 
-Current responsibilities:
-- collector interface;
-- capability-driven collection planning;
-- staged execution with bounded concurrency;
-- dependency blocking;
-- timeout/cancellation handling;
-- deterministic fragment merging and snapshot assembly.
+Orchestration: collector contracts, capability-driven planning, built-in profiles, bounded staged execution, dependency blocking, timeout/cancellation, telemetry, fragment merge and snapshot assembly.
 
-### DogfighterAD.Collectors.ActiveDirectory
-Owns Active Directory protocol-specific collection code.
+### `DogfighterAD.Collectors.ActiveDirectory`
 
-Current responsibilities:
-- read-only LDAP transport using `System.DirectoryServices.Protocols`;
-- paged streaming enumeration for high-volume subtree scans;
-- explicit DACL-only security-descriptor requests;
-- portable parsing of self-relative DACL security descriptors and supported Allow/Deny ACE families;
-- RootDSE discovery;
-- default-domain metadata collection;
-- one-pass collection of users, groups, computers and OUs;
-- range-aware group membership collection, including primary-group reconstruction and foreign security principal support;
-- configured local trust relationship collection from `trustedDomain` objects without contacting remote domains;
-- DACL/ACE collection for normalized domain root, users, groups, computers and OUs;
-- protocol-to-domain conversion for GUID, SID, generalized time and AD FileTime;
-- mapping protocol data into snapshot fragments with per-capability coverage.
+Protocol/source-specific read-only collection: LDAP transport and paging, RootDSE/domain/users/groups/computers/OUs, range-aware memberships, trusts, DACL/ACE collection, GPO metadata/links, plus read-only SYSVOL enumeration and supported GPO policy parsers. It exposes no LDAP write API in the snapshot-first phase.
 
-This project must not expose LDAP write operations to collectors. The snapshot-first phase does not modify target infrastructure.
+### `DogfighterAD.Serialization`
 
-## Architectural invariants
+Outer portable-artifact layer. Depends on Domain only. Owns canonical snapshot ordering for external serialization, `.dogad` container/manifest versioning, deterministic ZIP/JSON representation, defensive read limits and integrity/canonicalization verification. See `DOGAD_FORMAT.md`.
 
-These are deliberate constraints, not style preferences:
+## Non-negotiable invariants
 
-1. Rules never query AD directly.
-2. Graph analysis is derived from snapshot data; the graph is not canonical storage.
-3. A collection failure or missing capability cannot be interpreted as a clean result.
-4. Findings must be traceable to evidence/facts.
-5. Collector/protocol details cannot leak into the domain model.
-6. Same logical inputs must produce deterministic logical snapshot ordering and stable fact IDs.
-7. Secrets are not collected merely because they are readable. The scanner targets security-relevant posture and access relationships.
-8. Active validation is a future, separate execution plane.
-9. Large LDAP subtree enumeration must not introduce an avoidable transport-level full-result buffer.
-10. Capability contract versions are durable guarantees and must survive fragment merge/serialization unchanged or conservatively weakened, never silently upgraded.
-11. Collection stores direct relationships and source evidence; transitive group membership and attack-path expansion belong to analysis, not collection.
-12. A configured trust relationship is not evidence that the remote side is reachable or operational; remote validation requires a separate capability or validation contract.
-13. Null/absent and empty DACLs must remain distinguishable because ACE count alone cannot preserve their authorization semantics.
-14. An unsupported or malformed ACE must make ACL coverage incomplete; collectors must not silently discard security semantics and report `Complete`.
+1. Rules never query AD/SYSVOL directly.
+2. Graph analysis is derived from snapshot data; graph is not canonical storage.
+3. Missing/failed collection cannot be interpreted as a clean result.
+4. Findings must be traceable to observed evidence.
+5. Collector/protocol/serialization details do not leak into the Domain model.
+6. Same logical inputs produce stable logical ordering and stable fact identities.
+7. Secrets are not collected merely because readable; posture/access evidence is preferred.
+8. Active validation is a future separate execution plane.
+9. Large LDAP scans use streaming paging rather than avoidable whole-query buffers.
+10. Capability contract versions are durable and never silently upgraded.
+11. Collection stores direct relationships; transitive/path reasoning belongs to analysis.
+12. A configured trust is not proof the remote side is reachable/usable.
+13. Null/absent and empty DACLs remain distinguishable.
+14. Unsupported/malformed security semantics make coverage incomplete instead of being silently discarded.
+15. `.dogad` verifies payload integrity/schema/canonical representation, but SHA-256 is not an authenticity signature.
 
 ## Snapshot model
 
-A snapshot contains four major layers:
+A snapshot has four major layers:
 
-- `Metadata`: scan identity, target identity, product/schema versions and collector identities.
-- `Content`: normalized AD objects, relationships, security-descriptor states and ACEs.
-- `Coverage`: what the scanner attempted, whether it succeeded, and the data-contract version collected.
-- `Observations`: source facts with provenance used to support later findings.
+- `Metadata`: scan/target identity, product/schema versions and collector identities.
+- `Content`: normalized AD objects, relationships, GPO/SYSVOL data, descriptor state and ACEs.
+- `Coverage`: what was attempted, status, issues and capability contract version.
+- `Observations`: evidence facts and provenance.
 
-The snapshot is the durable audit artifact. Analysis must be able to run again later without reconnecting to the customer's AD when the required data is present.
+The snapshot is the durable logical audit record. `.dogad` is its portable deterministic outer artifact. Analysis should be repeatable offline without reconnecting to the customer when the required capability/version is present.
 
-## Capability contracts
+## Collection ownership and efficiency
 
-Capability IDs describe classes of collected data, for example:
+Ownership follows source/query shape rather than UI feature names. Users/groups/computers/OUs share a one-pass directory collector; memberships are separate because ranged `member` and primary-group reconstruction have distinct semantics; trusts are separate because local configuration must not imply remote validation; ACLs are separate because SD controls and binary parsing are specialized; GPO metadata/links use LDAP while GPO template settings use a read-only SYSVOL boundary.
 
-- `directory.core`
-- `directory.users`
-- `directory.groups`
-- `directory.memberships`
-- `directory.acls`
-- `directory.trusts`
-- `gpo.metadata`
-- `gpo.sysvol`
-- `adcs.directory`
+`gpo.sysvol v1` inventories/hash-evidences files but semantically normalizes only explicitly supported formats. It redacts/metadata-only handles potential secrets and never stores legacy `cpassword` values. Unknown files are not treated as understood policy.
 
-Every persisted coverage record contains a `ContractVersion`.
+## Portable artifact boundary
 
-A rule declares a minimum required contract version. If a snapshot is older than the rule requirement, the rule must not report the environment as clean; it must be treated as not verifiable with that snapshot.
-
-Capability versions are monotonic: version N+1 must preserve guarantees of version N. If semantics cannot remain compatible, introduce a new capability ID instead.
-
-The concrete built-in guarantees are documented in [CAPABILITIES.md](CAPABILITIES.md).
-
-## Collection ownership and query efficiency
-
-Collector ownership is chosen by data source and query shape, not by UI feature names. The `ad.ldap.directory-objects` collector owns users, groups, computers and OUs because they can be retrieved safely in a single default-domain paged subtree pass. Each capability still receives independent coverage and can become `Partial` without contaminating unrelated capability results.
-
-Memberships are deliberately separate because large group `member` attributes require range-aware collection and primary-group reconstruction. The membership collector stores direct group-to-member and group-to-group edges and does not flatten transitive membership. Trusts are also separate because `trustedDomain` configuration has different semantics and must not imply remote validation. ACLs are separate because security descriptors need the SD-flags LDAP control, binary parsing and explicit handling of unsupported ACE families. This keeps one-pass efficiency without creating one unmaintainable collector that owns all AD data.
-
-## ACL data boundary
-
-`directory.acls v1` requests only the DACL section of `nTSecurityDescriptor`. It intentionally does not request SACL data or require SACL privileges. The normalized snapshot preserves security-descriptor control flags and DACL state (`NotPresent`, `Null`, `Empty`, `Present`) independently from ACE rows.
-
-Supported v1 DACL ACE families are standard Allow/Deny and object-specific Allow/Deny ACEs. Trustee SID, access mask, ACE flags, inheritance, `ObjectType` and `InheritedObjectType` are preserved. Unsupported ACE families make collection `Partial`; they are not silently ignored.
-
-## Stable identities and AD special values
-
-AD objects use normalized stable identifiers rather than display names wherever possible. Facts use a versioned canonical hash algorithm so evidence identity is not coupled to collector implementation versions.
-
-AD sentinel values are normalized explicitly. For example, `pwdLastSet=0` and `accountExpires=0/Int64.MaxValue` retain their security meaning in normalized fields while raw values remain available as source observations.
+`.dogad v1` is a strict deterministic ZIP containing `manifest.json` and canonical `snapshot.json`. Container version, serialization ID, snapshot schema version and capability contract versions are intentionally independent compatibility axes. Unknown entries are rejected in v1. The current implementation buffers the JSON payload, so peak-memory benchmarking on large domains is pending.
 
 ## Current limitations
 
-The foundation is not yet a complete AD scanner. Current network collection covers RootDSE discovery, default-domain metadata, users/groups/computers/OUs, group memberships including primary groups and foreign security principals, configured local trust relationships, and v1 DACL/ACE data. GPO metadata/links, SYSVOL settings and ADCS collection are planned next.
+Collection Core now covers the default domain, core objects, memberships, local trust configuration, supported DACL semantics, GPO metadata/links/inheritance and supported read-only SYSVOL settings. It does not yet cover AD CS, full forest/multi-domain topology, all Group Policy extension semantics, every ACE family, endpoint RSoP/validation, LAPS/gMSA posture or broader host/protocol data.
 
-ACL v1 does not collect SACL/owner/group sections and treats unsupported callback/conditional ACE families as explicit partial coverage until dedicated normalization is implemented.
-
-Snapshot serialization (`.dogad`), persistent storage, rule execution, graph analysis and reporting are also not yet implemented.
+`.dogad v1` exists and supports offline transport/integrity verification, but live end-to-end MINILAB/GOAD integration, LDAP request/page accounting and large-domain memory benchmarks are still pending. Persistent SQLite storage, Rule Engine, graph analysis, diff/retest and reporting are not yet implemented.
 
 ## Future Validation Plane
 
-Validation/execution is explicitly not part of the snapshot collector. A future Validation Node will consume findings or paths through explicit job contracts. It may run in another process, host, operating system or language without changing the snapshot and analysis core.
+Validation/execution is not part of the snapshot collector. A future Validation Node will consume explicit finding/path jobs, may run in another process/host/OS/language, and must remain separately scoped, controlled and auditable.

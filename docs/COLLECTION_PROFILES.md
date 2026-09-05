@@ -1,14 +1,12 @@
 # Collection profiles and execution telemetry
 
-This document defines the built-in DogfighterAD collection profiles and the current operational guardrails around collection execution.
-
-Profiles are intentionally explicit. Adding a new capability or collector must not silently make an existing built-in profile heavier. A profile changes only through a deliberate code/documentation change with tests.
+Built-in profiles are explicit product contracts. Registering a new collector/capability must not silently make an existing profile heavier. Profile expansion requires a deliberate code/documentation/test change.
 
 ## `minimal`
 
-Purpose: a lighter read-only inventory/topology pass suitable for quick AD discovery and for environments where DACL/GPO collection is intentionally deferred.
+Purpose: lighter read-only inventory/topology collection.
 
-Requested capabilities:
+Capabilities:
 
 - `directory.core`
 - `directory.domains`
@@ -19,88 +17,51 @@ Requested capabilities:
 - `directory.memberships`
 - `directory.trusts`
 
-Execution defaults:
+Defaults: `MaxConcurrency=2`, per-collector timeout 2 minutes.
 
-- `MaxConcurrency = 2`
-- per-collector timeout = 2 minutes
-
-The profile intentionally excludes `directory.acls`, `gpo.metadata`, `gpo.links`, planned `gpo.sysvol` and planned AD CS collection.
+It intentionally excludes DACL and all GPO collection.
 
 ## `audit-full`
 
-Purpose: the broad built-in auditor-oriented scan over every read-only capability that is currently implemented and tested.
+Purpose: broad auditor-oriented scan over every read-only capability that is currently implemented and intentionally approved for the built-in full profile.
 
-Requested capabilities:
+Capabilities:
 
 - everything in `minimal`
 - `directory.acls`
 - `gpo.metadata`
 - `gpo.links`
+- `gpo.sysvol`
 
-Execution defaults:
+Defaults: `MaxConcurrency=4`, per-collector timeout 3 minutes.
 
-- `MaxConcurrency = 4`
-- per-collector timeout = 3 minutes
+`gpo.sysvol` was added deliberately only after its read-only contract, secret-handling rules and tests existed. This profile therefore includes filesystem/SMB-backed SYSVOL workload in addition to LDAP workload. Planned capabilities such as `adcs.directory` remain excluded until explicitly reviewed and added.
 
-Planned capabilities are not added automatically. For example, `gpo.sysvol` and `adcs.directory` remain excluded until their contracts, collectors and tests actually exist and `audit-full` is deliberately revised.
+## Current guardrails
 
-## Why profiles are explicit
+`CollectionProfile` feeds the planner/executor with requested capabilities, optional preferred provider mapping, max concurrency and per-collector hard timeout. Timed-out collectors become failed coverage and downstream dependencies are blocked; incomplete collection is never converted into a clean result.
 
-Collector registration is an implementation detail. Profile semantics must remain reproducible across versions.
+The current concurrency/timeouts are conservative engineering defaults, not benchmark-derived production limits.
 
-Without explicit capability sets, adding a new collector could unexpectedly increase LDAP traffic, permissions required, runtime or collected data for an old command. DogfighterAD avoids that behavior: a built-in profile is a reviewed product contract, not `all currently registered collectors`.
+## Current telemetry
 
-## Current execution guardrails
+`CollectionTelemetry.Build(CollectionExecutionResult)` provides deterministic:
 
-`CollectionProfile` already feeds `CollectionPlanner` / `CollectionExecutor` with:
-
-- maximum collector concurrency;
-- per-collector hard timeout;
-- requested capability set;
-- optional preferred collector mapping for ambiguous providers.
-
-A timed-out collector produces failed capability coverage. Downstream collectors depending on unavailable capability coverage are blocked rather than executed against incomplete prerequisites.
-
-The default concurrency/timeout values are conservative engineering defaults. They are **not** yet benchmark-derived production limits and should be tuned only after MINILAB/GOAD and larger-directory measurements exist.
-
-## Current execution telemetry
-
-`CollectionTelemetry.Build(CollectionExecutionResult)` produces a deterministic summary containing:
-
-- overall scan duration;
+- overall duration;
 - collector count;
-- completed / failed / timed-out / blocked collector counts;
-- capability coverage counts by `CapabilityStatus`;
-- per-collector duration, status and selected capabilities.
+- completed/failed/timed-out/blocked counts;
+- coverage counts by `CapabilityStatus`;
+- per-collector identity, duration, status and selected capabilities.
 
-Collector telemetry is sorted by stable collector identity so presentation does not depend on the timing/order of concurrent task completion.
+Still pending:
 
-Telemetry is observational. It must never reinterpret incomplete collection as a clean security result.
-
-## Not implemented yet
-
-The following are deliberately still open work:
-
-- native LDAP request count;
-- paged-request/page count;
-- entries/bytes transferred per LDAP request;
+- native LDAP request/page counts;
+- entries/bytes per request;
 - per-capability query budgets;
-- peak managed/process memory telemetry;
-- benchmark-derived warning/error thresholds;
-- persistence of scan telemetry in the portable `.dogad` artifact.
-
-These should be added as instrumentation layers rather than by coupling rule logic to protocol clients.
+- peak managed/process memory;
+- benchmark-derived thresholds;
+- persistence of executor telemetry itself into `.dogad` (the current artifact serializes `AdSnapshot`, not `CollectionTelemetry`).
 
 ## Future custom profiles
 
-A later CLI/config layer may permit custom profiles, but custom profiles should still compile into the same `CollectionProfile` contract and pass through `CollectionPlanner` validation.
-
-Expected future options include:
-
-- include/exclude capability IDs;
-- preferred collector provider;
-- concurrency;
-- collector timeout;
-- benchmark-informed resource/query budgets.
-
-Custom configuration must not bypass dependency planning or coverage semantics.
+A CLI/config layer may later support include/exclude capability IDs, provider selection, concurrency, timeout and benchmark-informed budgets, but custom configuration must still compile to `CollectionProfile` and pass through normal dependency planning/coverage semantics.

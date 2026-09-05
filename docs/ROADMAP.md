@@ -1,135 +1,107 @@
 # Roadmap and implementation status
 
-This document tracks what is actually implemented in the repository and what is planned next. It is intentionally conservative: an item is marked complete only when code and automated checks exist.
+This document tracks what is actually implemented in the repository. An item is marked complete only when code and automated checks exist.
 
 ## Foundation — current branch
 
-- [x] .NET 10 LTS baseline with warnings as errors and deterministic builds.
-- [x] Snapshot-first architecture ADR.
-- [x] Read-only collection boundary ADR.
-- [x] Versioned snapshot schema foundation.
-- [x] Normalized domain objects and relationship containers.
-- [x] Generic directory-object fallback for not-yet-specialized object classes.
-- [x] Observed facts with provenance and redaction disposition.
-- [x] Stable versioned `FactId` generation.
-- [x] Capability coverage with explicit failure/partial/blocked states.
-- [x] Capability contract versions for future offline compatibility checks.
-- [x] Capability contract versions preserved conservatively during fragment merging.
-- [x] Deterministic snapshot fragment merging/assembly.
-- [x] Capability-driven collection planner with dependency-cycle detection.
-- [x] Staged collection executor with bounded concurrency, cancellation and timeouts.
-- [x] Dependency failure propagation: downstream collectors are blocked instead of producing misleading clean data.
-- [x] Built-in `minimal` and `audit-full` collection profiles with explicit stable capability sets.
-- [x] Collection execution telemetry for total/collector durations and execution/capability status counts.
-- [x] Read-only LDAP adapter with paging and binary attribute support.
-- [x] Streaming paged LDAP entry API for large directory scans without transport-level full-result buffering.
-- [x] DACL-only LDAP security-descriptor control without requesting SACL/owner/group data.
-- [x] Portable self-relative security-descriptor/DACL parser with explicit unsupported-ACE failure.
-- [x] RootDSE discovery collector.
-- [x] Domain metadata collector using upstream RootDSE state.
-- [x] One-pass directory object collector for users, groups, computers and OUs.
-- [x] Range-aware AD `member` retrieval that follows `member;range=start-end` chunks through the terminal range.
-- [x] Group membership collection with direct group-to-group edges, primary groups, FSP support and explicit partial-result accounting.
-- [x] Local default-domain trust relationship collection from `trustedDomain` objects without contacting remote domains.
-- [x] DACL/ACE collection for normalized default-domain root, users, groups, computers and OUs.
-- [x] Group Policy Container metadata collection from LDAP.
-- [x] GPO link/order/options and domain/OU Block Inheritance collection from LDAP.
-- [x] GPO relationship invariants for unknown targets, duplicate orders and invalid inheritance state.
-- [x] Portable GUID/SID/generalized-time/AD FileTime conversion helpers for LDAP normalization.
-- [x] GitHub Actions build/test pipeline.
-- [x] Core unit tests for fact IDs, capability compatibility, snapshot invariants, fragment merging, collection planning/execution, profiles/telemetry and LDAP collector mapping.
-- [x] Living architecture, roadmap, capability-contract and development documentation.
+- [x] .NET 10 LTS baseline, warnings as errors and deterministic builds.
+- [x] Snapshot-first/read-only architecture ADRs.
+- [x] Versioned normalized snapshot schema and generic directory-object fallback.
+- [x] Observed facts, provenance/redaction disposition and stable versioned `FactId` generation.
+- [x] Capability coverage plus monotonic contract versions for offline compatibility checks.
+- [x] Deterministic fragment merge/assembly and snapshot invariant validation.
+- [x] Capability-driven collection planner with cycle/provider validation.
+- [x] Staged executor with bounded concurrency, cancellation, timeout and dependency blocking.
+- [x] Built-in `minimal` and `audit-full` profiles with explicit capability sets.
+- [x] Execution duration/status telemetry.
+- [x] Read-only LDAP transport, paged streaming enumeration and binary attributes.
+- [x] DACL-only SD requests plus portable v1 DACL parser.
+- [x] Read-only SYSVOL transport boundary with file-count/file-size guardrails.
+- [x] Portable deterministic `.dogad` artifact serializer/reader in a separate module.
+- [x] `.dogad` manifest/payload integrity checks, canonical representation checks and strict v1 entry allowlist.
+- [x] GitHub Actions build/test pipeline and core unit-test suite.
+- [x] Living architecture/capability/profile/format/handoff documentation.
 
 ## Collection Core v1
 
-Order matters. We build broad reliable collection before a large rule library.
-
-- [x] Domain object collector: default domain metadata.
-- [x] Directory users collector/capability.
-- [x] Directory groups collector/capability.
-- [x] Directory computers collector/capability.
-- [x] Organizational units collector/capability.
-- [x] Group membership collector with direct nested-group relationship preservation, primary groups and foreign security principals.
-- [x] Trust collector for configured local `trustedDomain` relationships.
-- [x] Security descriptor / DACL collector with object/inherited object GUID handling and explicit null/empty DACL state.
-- [x] GPO metadata collection from LDAP.
-- [x] GPO link/order/options and Block Inheritance collection from LDAP.
-- [ ] SYSVOL read-only GPO settings collection.
-- [x] Built-in collection profiles (`minimal`, `audit-full`).
-- [x] Execution-duration/status telemetry and hard execution guardrails through `MaxConcurrency` + per-collector timeout.
+- [x] RootDSE discovery / `directory.core`.
+- [x] Default-domain metadata / `directory.domains`.
+- [x] Users, groups, computers and OUs in one paged subtree pass.
+- [x] Range-safe memberships, nested direct edges, primary groups and FSP support.
+- [x] Local configured trusts.
+- [x] DACL/security descriptors and supported ACEs.
+- [x] GPO metadata.
+- [x] GPO links/order/options and Block Inheritance.
+- [x] Read-only SYSVOL file inventory and supported GPO setting normalization.
+- [x] `minimal` / `audit-full` profiles; `audit-full` deliberately includes `gpo.sysvol`.
+- [x] Deterministic portable `.dogad v1` artifact.
+- [x] SHA-256 payload integrity metadata and strict artifact reader.
 - [ ] LDAP request/page counting and per-capability query budgets.
 - [ ] Peak-memory/resource telemetry and benchmark-derived thresholds.
-- [ ] Snapshot serializer and portable `.dogad` artifact.
-- [ ] Integrity metadata for portable snapshots.
+- [ ] Live end-to-end integration harness against MINILAB/GOAD.
+- [ ] Better partial-result accounting based on real referral/inaccessible-NC/SYSVOL failure fixtures.
 
 ## Collection Core v1.1
 
-- [ ] Broader Kerberos-relevant account posture beyond the fields already captured in directory object v1.
+- [ ] Broader Kerberos-relevant account posture beyond fields already captured in v1.
 - [ ] Additional delegation relationships and host/protocol context.
 - [ ] LAPS posture and who-can-read relationships without collecting managed passwords by default.
-- [ ] gMSA posture and access relationships without collecting secret blobs by default.
-- [ ] AD CS directory topology and security-relevant configuration.
-- [ ] Sites/subnets and forest topology where needed for assessment logic.
-- [ ] Better partial-result accounting for referrals, inaccessible naming contexts and mid-stream LDAP failures.
-- [ ] Additional conditional/callback ACE families where required by real-world fixtures; unsupported v1 ACEs remain explicit `Partial` coverage.
+- [ ] gMSA posture/access relationships without collecting secret blobs by default.
+- [ ] AD CS directory topology/security configuration.
+- [ ] Sites/subnets/forest topology and multi-domain collection.
+- [ ] Additional conditional/callback ACE families when justified by real fixtures.
 
 ## Analysis Core
 
-- [ ] Rule engine with prerequisite/capability-version checks.
+- [ ] Rule engine with capability/version prerequisite checks and explicit `NotVerified`.
 - [ ] Stable finding fingerprints.
-- [ ] Finding lifecycle: new / existing / resolved.
 - [ ] Evidence references back to snapshot observations.
-- [ ] Deterministic analysis results.
-- [ ] Rule metadata and rule-pack versioning.
-- [ ] Initial high-value AD audit rule pack.
-- [ ] Graph projection and path analysis as a separate analysis module.
+- [ ] Deterministic rule-pack execution and metadata/versioning.
+- [ ] Finding lifecycle: new / existing / resolved.
+- [ ] Initial auditor-focused AD rule pack.
+- [ ] Graph projection/path analysis as a separate analysis module.
 
 ## Audit workflow
 
-- [ ] CLI scan command.
-- [ ] Offline analyze command.
+- [ ] CLI `scan` producing `.dogad`.
+- [ ] Offline `analyze` loading `.dogad` without reconnecting to AD.
 - [ ] Snapshot diff / retest workflow.
-- [ ] JSON export.
-- [ ] HTML audit report.
-- [ ] Machine-readable coverage report showing what could and could not be verified.
+- [ ] JSON export and HTML audit report.
+- [ ] Machine-readable coverage report.
 - [ ] Suppression / accepted-risk model with audit trail.
 
 ## Later product layers
 
-- [ ] Local/company-friendly UX over the same core engine.
+- [ ] Company-friendly UX over the same core.
 - [ ] Scheduled/continuous assessment mode.
-- [ ] Optional external-data import adapters where technically and legally appropriate.
-- [ ] Separate Validation Plane and Validation Node contracts.
+- [ ] External-data import adapters where technically/legal appropriate.
+- [ ] Separate Validation Plane / Validation Node contracts.
 - [ ] Controlled active validation only after read-only assessment is mature and measurable.
 
 ## Explicitly not doing yet
 
 - Microservices.
-- Runtime third-party DLL plugin loading.
-- Automatic exploitation.
-- Credential dumping or collection of secrets simply because the account can read them.
-- A custom graph database before measurement proves it is necessary.
-- Reimplementing every existing AD security tool instead of focusing on a coherent audit workflow.
+- Runtime arbitrary third-party DLL loading.
+- Automatic exploitation or credential dumping.
+- Collecting secrets merely because they are readable.
+- A custom graph database before measurements justify it.
+- Reimplementing every existing AD security tool instead of building a coherent assessment workflow.
 
 ## Immediate next stopping-point tasks
 
-The next chat/development session should start from the current `foundation/snapshot-core` branch and, before adding analysis rules, continue Collection Core v1 in this order:
-
-1. design `gpo.sysvol v1` as a strictly read-only capability with explicit file/setting coverage and no secret collection;
-2. instrument LDAP request/page counts and design benchmark-driven per-capability query/resource budgets;
-3. define the portable `.dogad` snapshot format, integrity metadata and deterministic serialization;
-4. add lab integration tests against MINILAB/GOAD before declaring the collection core auditor-ready;
-5. only then begin the Rule Engine and initial auditor-facing rule pack.
+1. Build the first live integration path: `audit-full -> AdSnapshot -> .dogad -> offline read` against MINILAB/GOAD.
+2. Instrument LDAP request/page counts and measure query volume, duration and peak memory on lab sizes before setting budgets.
+3. Harden partial/referral/inaccessible SYSVOL and LDAP behavior from real lab fixtures.
+4. Then implement the Rule Engine with capability-version prerequisites, stable finding fingerprints, evidence references, deterministic results and `NotVerified` semantics.
+5. Build the first high-value auditor rule pack, then diff/retest, JSON/HTML reporting and graph projection.
 
 ## Quality gates before first auditor-facing build
 
-The first build intended for real auditors should not be released until:
-
-1. clean AD and intentionally vulnerable AD fixtures both exist;
-2. collection failures cannot silently become negative findings;
-3. snapshots are reproducible and can be analyzed offline;
-4. core collectors have integration tests against a lab domain;
-5. known planted misconfigurations have expected findings and clean-state regression tests;
-6. collection time, LDAP query count and peak memory are measured on multiple directory sizes;
-7. every finding can explain what fact/evidence caused it;
-8. the read-only claim has been validated by code review and integration tests.
+1. Clean and intentionally vulnerable AD fixtures exist.
+2. Collection failures cannot silently become negative findings.
+3. `.dogad` is reproducible, integrity-checked and can be analyzed offline.
+4. Core collectors have live lab integration coverage.
+5. Planted misconfigurations have expected findings plus clean-state false-positive regressions.
+6. Collection time, LDAP query/page count and peak memory are measured on multiple directory sizes.
+7. Every finding explains the fact/evidence that caused it.
+8. The read-only claim is validated by code review and integration tests.
