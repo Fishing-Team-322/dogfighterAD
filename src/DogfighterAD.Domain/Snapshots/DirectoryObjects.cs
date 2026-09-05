@@ -98,7 +98,15 @@ public sealed record AdGpoLink(
     AdObjectId GpoId,
     int Order,
     bool Enabled,
-    bool Enforced);
+    bool Enforced)
+{
+    public int RawOptions { get; init; }
+}
+
+public sealed record AdGpoContainerPolicy(
+    AdObjectId ContainerId,
+    int RawOptions,
+    bool BlockInheritance);
 
 public sealed record AdTrust
 {
