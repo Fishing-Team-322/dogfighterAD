@@ -2,6 +2,7 @@ namespace DogfighterAD.Domain.Snapshots;
 
 public sealed record SnapshotContent
 {
+    public DirectoryEnvironment? DirectoryEnvironment { get; init; }
     public IReadOnlyList<AdDomain> Domains { get; init; } = [];
     public IReadOnlyList<AdUser> Users { get; init; } = [];
     public IReadOnlyList<AdGroup> Groups { get; init; } = [];

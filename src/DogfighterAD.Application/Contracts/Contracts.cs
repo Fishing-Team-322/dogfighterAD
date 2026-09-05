@@ -18,7 +18,8 @@ public interface ICollector
 public sealed record CollectionContext(
     Guid ScanId,
     string Target,
-    IReadOnlySet<string> RequestedCapabilities);
+    IReadOnlySet<string> RequestedCapabilities,
+    SnapshotFragment AvailableData);
 
 public sealed record CollectorResult(
     string CollectorId,

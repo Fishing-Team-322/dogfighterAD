@@ -4,23 +4,28 @@ namespace DogfighterAD.Application.Snapshots;
 
 public sealed class SnapshotAssembler
 {
+    private readonly SnapshotFragmentMerger _fragmentMerger;
+
+    public SnapshotAssembler()
+        : this(new SnapshotFragmentMerger())
+    {
+    }
+
+    public SnapshotAssembler(SnapshotFragmentMerger fragmentMerger)
+    {
+        _fragmentMerger = fragmentMerger ?? throw new ArgumentNullException(nameof(fragmentMerger));
+    }
+
     public AdSnapshot Assemble(SnapshotAssemblyRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var content = MergeContent(request.Fragments);
-        var coverage = MergeCoverage(request.Fragments);
-        var observations = request.Fragments
-            .SelectMany(x => x.Observations)
-            .OrderBy(x => x.FactId, StringComparer.Ordinal)
-            .ToArray();
-
+        var merged = _fragmentMerger.Merge(request.Fragments);
         var completionStatus = DetermineCompletionStatus(
             request.RequestedCapabilities,
-            coverage);
+            merged.Coverage);
 
-        var collectors = request.Fragments
-            .SelectMany(x => x.Coverage)
+        var collectors = merged.Coverage
             .SelectMany(x => x.Collectors)
             .Distinct()
             .OrderBy(x => x.Id, StringComparer.Ordinal)
@@ -44,9 +49,9 @@ public sealed class SnapshotAssembler
                     .ToArray(),
                 Collectors = collectors
             },
-            Content = content,
-            Coverage = coverage,
-            Observations = observations
+            Content = merged.Content,
+            Coverage = merged.Coverage,
+            Observations = merged.Observations
         };
 
         var violations = SnapshotInvariantValidator.Validate(snapshot);
@@ -56,133 +61,6 @@ public sealed class SnapshotAssembler
         }
 
         return snapshot;
-    }
-
-    private static SnapshotContent MergeContent(IReadOnlyList<SnapshotFragment> fragments)
-    {
-        return new SnapshotContent
-        {
-            Domains = MergeDirectoryObjects(fragments.SelectMany(x => x.Content.Domains), "domain"),
-            Users = MergeDirectoryObjects(fragments.SelectMany(x => x.Content.Users), "user"),
-            Groups = MergeDirectoryObjects(fragments.SelectMany(x => x.Content.Groups), "group"),
-            Computers = MergeDirectoryObjects(fragments.SelectMany(x => x.Content.Computers), "computer"),
-            OrganizationalUnits = MergeDirectoryObjects(
-                fragments.SelectMany(x => x.Content.OrganizationalUnits),
-                "organizational-unit"),
-            GroupPolicyObjects = MergeDirectoryObjects(
-                fragments.SelectMany(x => x.Content.GroupPolicyObjects),
-                "group-policy-object"),
-            ForeignSecurityPrincipals = MergeDirectoryObjects(
-                fragments.SelectMany(x => x.Content.ForeignSecurityPrincipals),
-                "foreign-security-principal"),
-            OtherDirectoryObjects = MergeDirectoryObjects(
-                fragments.SelectMany(x => x.Content.OtherDirectoryObjects),
-                "generic-directory-object"),
-            GroupMemberships = fragments
-                .SelectMany(x => x.Content.GroupMemberships)
-                .Distinct()
-                .OrderBy(x => x.GroupId.Value)
-                .ThenBy(x => x.MemberId.Value)
-                .ThenBy(x => x.Source)
-                .ToArray(),
-            GroupPolicyLinks = fragments
-                .SelectMany(x => x.Content.GroupPolicyLinks)
-                .Distinct()
-                .OrderBy(x => x.ContainerId.Value)
-                .ThenBy(x => x.GpoId.Value)
-                .ThenBy(x => x.Order)
-                .ToArray(),
-            Trusts = fragments
-                .SelectMany(x => x.Content.Trusts)
-                .Distinct()
-                .OrderBy(x => x.SourceDomainDnsName, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(x => x.TargetDomainDnsName, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(x => x.TrustDirection)
-                .ThenBy(x => x.TrustType)
-                .ToArray(),
-            Aces = fragments
-                .SelectMany(x => x.Content.Aces)
-                .Distinct()
-                .OrderBy(x => x.TargetObjectId.Value)
-                .ThenBy(x => x.TrusteeSid, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(x => x.AccessType)
-                .ThenBy(x => x.AccessMask)
-                .ThenBy(x => x.ObjectType)
-                .ThenBy(x => x.InheritedObjectType)
-                .ThenBy(x => x.AceFlags)
-                .ToArray()
-        };
-    }
-
-    private static IReadOnlyList<T> MergeDirectoryObjects<T>(
-        IEnumerable<T> objects,
-        string kind)
-        where T : AdDirectoryObject
-    {
-        var result = new List<T>();
-        var seen = new HashSet<AdObjectId>();
-
-        foreach (var item in objects)
-        {
-            if (!seen.Add(item.Id))
-            {
-                throw new SnapshotAssemblyException([
-                    new SnapshotInvariantViolation(
-                        "snapshot.fragment.duplicate-object",
-                        $"Multiple collector fragments produced {kind} object {item.Id}. " +
-                        "Collector ownership must be resolved before snapshot assembly.")
-                ]);
-            }
-
-            result.Add(item);
-        }
-
-        return result
-            .OrderBy(x => x.Id.Value)
-            .ToArray();
-    }
-
-    private static IReadOnlyList<CapabilityCoverage> MergeCoverage(
-        IReadOnlyList<SnapshotFragment> fragments)
-    {
-        return fragments
-            .SelectMany(x => x.Coverage)
-            .GroupBy(x => x.CapabilityId, StringComparer.Ordinal)
-            .Select(group => new CapabilityCoverage
-            {
-                CapabilityId = group.Key,
-                Status = MergeCapabilityStatus(group.Select(x => x.Status)),
-                StartedAt = group.Min(x => x.StartedAt),
-                CompletedAt = group.Max(x => x.CompletedAt),
-                ObservedItemCount = group.Max(x => x.ObservedItemCount),
-                Collectors = group
-                    .SelectMany(x => x.Collectors)
-                    .Distinct()
-                    .OrderBy(x => x.Id, StringComparer.Ordinal)
-                    .ThenBy(x => x.Version, StringComparer.Ordinal)
-                    .ToArray(),
-                Issues = group
-                    .SelectMany(x => x.Issues)
-                    .OrderBy(x => x.Code, StringComparer.Ordinal)
-                    .ThenBy(x => x.CollectorId, StringComparer.Ordinal)
-                    .ThenBy(x => x.Target, StringComparer.Ordinal)
-                    .ThenBy(x => x.Message, StringComparer.Ordinal)
-                    .ToArray()
-            })
-            .OrderBy(x => x.CapabilityId, StringComparer.Ordinal)
-            .ToArray();
-    }
-
-    private static CapabilityStatus MergeCapabilityStatus(IEnumerable<CapabilityStatus> statuses)
-    {
-        var values = statuses.Distinct().ToArray();
-
-        if (values.Length == 1)
-        {
-            return values[0];
-        }
-
-        return CapabilityStatus.Partial;
     }
 
     private static SnapshotCompletionStatus DetermineCompletionStatus(
