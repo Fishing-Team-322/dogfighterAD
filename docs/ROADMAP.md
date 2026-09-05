@@ -30,6 +30,7 @@ This document tracks what is actually implemented in the repository and what is 
 - [x] Group membership collection with direct group-to-group edges, primary groups, FSP support and explicit partial-result accounting.
 - [x] Local default-domain trust relationship collection from `trustedDomain` objects without contacting remote domains.
 - [x] DACL/ACE collection for normalized default-domain root, users, groups, computers and OUs.
+- [x] Group Policy Container metadata collection from LDAP.
 - [x] Portable GUID/SID/generalized-time/AD FileTime conversion helpers for LDAP normalization.
 - [x] GitHub Actions build/test pipeline.
 - [x] Core unit tests for fact IDs, capability compatibility, snapshot invariants, fragment merging, collection planning/execution and LDAP collector mapping.
@@ -47,7 +48,8 @@ Order matters. We build broad reliable collection before a large rule library.
 - [x] Group membership collector with direct nested-group relationship preservation, primary groups and foreign security principals.
 - [x] Trust collector for configured local `trustedDomain` relationships.
 - [x] Security descriptor / DACL collector with object/inherited object GUID handling and explicit null/empty DACL state.
-- [ ] GPO metadata and link collection from LDAP.
+- [x] GPO metadata collection from LDAP.
+- [ ] GPO link/inheritance collection from LDAP.
 - [ ] SYSVOL read-only GPO settings collection.
 - [ ] Collection profiles (`minimal`, `audit-full`, later custom profiles).
 - [ ] Per-capability query budgets and collection telemetry.
