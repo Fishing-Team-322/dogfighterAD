@@ -68,7 +68,7 @@ public sealed class TrustCollector : ICollector
 
         if (string.IsNullOrWhiteSpace(baseDn))
         {
-            var completedAt = _timeProvider.GetUtcNow();
+            var namingContextFailureCompletedAt = _timeProvider.GetUtcNow();
             return new CollectorResult(
                 CollectorId,
                 CollectorVersion,
@@ -77,12 +77,12 @@ public sealed class TrustCollector : ICollector
                     "collection.trusts.default-naming-context-unavailable",
                     "Trust collection requires RootDSE defaultNamingContext.",
                     startedAt,
-                    completedAt));
+                    namingContextFailureCompletedAt));
         }
 
         if (sourceDomains.Count != 1 || string.IsNullOrWhiteSpace(sourceDomains[0].DnsName))
         {
-            var completedAt = _timeProvider.GetUtcNow();
+            var sourceDomainFailureCompletedAt = _timeProvider.GetUtcNow();
             return new CollectorResult(
                 CollectorId,
                 CollectorVersion,
@@ -91,7 +91,7 @@ public sealed class TrustCollector : ICollector
                     "collection.trusts.source-domain-unavailable",
                     "Trust collection requires exactly one normalized default-domain identity.",
                     startedAt,
-                    completedAt));
+                    sourceDomainFailureCompletedAt));
         }
 
         var sourceDomainDnsName = sourceDomains[0].DnsName;
