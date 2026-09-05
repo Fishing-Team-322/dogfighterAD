@@ -106,6 +106,7 @@ public static class SnapshotInvariantValidator
             }
         }
 
+        var linkOrders = new HashSet<(AdObjectId ContainerId, int Order)>();
         foreach (var link in content.GroupPolicyLinks)
         {
             if (!knownObjectIds.Contains(link.ContainerId))
@@ -120,6 +121,51 @@ public static class SnapshotInvariantValidator
                 violations.Add(new(
                     "snapshot.gpo-link.unknown-gpo",
                     $"GPO link references unknown GPO {link.GpoId}."));
+            }
+
+            if (link.Order < 1)
+            {
+                violations.Add(new(
+                    "snapshot.gpo-link.invalid-order",
+                    $"GPO link for container {link.ContainerId} has invalid order {link.Order}."));
+            }
+            else if (!linkOrders.Add((link.ContainerId, link.Order)))
+            {
+                violations.Add(new(
+                    "snapshot.gpo-link.duplicate-order",
+                    $"Container {link.ContainerId} has more than one GPO link at order {link.Order}."));
+            }
+
+            if (link.RawOptions < 0)
+            {
+                violations.Add(new(
+                    "snapshot.gpo-link.invalid-options",
+                    $"GPO link for container {link.ContainerId} has negative raw options {link.RawOptions}."));
+            }
+        }
+
+        var gpoContainerPolicyTargets = new HashSet<AdObjectId>();
+        foreach (var policy in content.GroupPolicyContainerPolicies)
+        {
+            if (!knownObjectIds.Contains(policy.ContainerId))
+            {
+                violations.Add(new(
+                    "snapshot.gpo-container-policy.unknown-container",
+                    $"GPO inheritance state references unknown container {policy.ContainerId}."));
+            }
+
+            if (!gpoContainerPolicyTargets.Add(policy.ContainerId))
+            {
+                violations.Add(new(
+                    "snapshot.gpo-container-policy.duplicate-container",
+                    $"GPO inheritance state for container {policy.ContainerId} appears more than once."));
+            }
+
+            if (policy.RawOptions < 0)
+            {
+                violations.Add(new(
+                    "snapshot.gpo-container-policy.invalid-options",
+                    $"GPO inheritance state for container {policy.ContainerId} has negative raw options {policy.RawOptions}."));
             }
         }
 
