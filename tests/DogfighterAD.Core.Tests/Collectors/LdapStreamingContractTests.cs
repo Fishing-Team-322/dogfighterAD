@@ -7,12 +7,13 @@ public sealed class LdapStreamingContractTests
     [Fact]
     public async Task DefaultStreamingFallback_EnumeratesBufferedSearchResult()
     {
-        var client = new BufferedOnlyFakeClient(
+        var fake = new BufferedOnlyFakeClient(
             new LdapSearchResult(
             [
                 CreateEntry("CN=one,DC=mini,DC=lab"),
                 CreateEntry("CN=two,DC=mini,DC=lab")
             ]));
+        IReadOnlyLdapClient client = fake;
 
         var entries = new List<LdapSearchEntry>();
         await foreach (var entry in client.SearchEntriesAsync(
@@ -31,7 +32,7 @@ public sealed class LdapStreamingContractTests
         Assert.Equal(2, entries.Count);
         Assert.Equal("CN=one,DC=mini,DC=lab", entries[0].DistinguishedName);
         Assert.Equal("CN=two,DC=mini,DC=lab", entries[1].DistinguishedName);
-        Assert.Equal(1, client.SearchCount);
+        Assert.Equal(1, fake.SearchCount);
     }
 
     private static LdapSearchEntry CreateEntry(string distinguishedName) =>
