@@ -15,5 +15,6 @@
     <ProjectReference Include="..\..\src\DogfighterAD.Domain\DogfighterAD.Domain.csproj" />
     <ProjectReference Include="..\..\src\DogfighterAD.Application\DogfighterAD.Application.csproj" />
     <ProjectReference Include="..\..\src\DogfighterAD.Collectors.ActiveDirectory\DogfighterAD.Collectors.ActiveDirectory.csproj" />
+    <ProjectReference Include="..\..\src\DogfighterAD.Serialization\DogfighterAD.Serialization.csproj" />
   </ItemGroup>
 </Project>

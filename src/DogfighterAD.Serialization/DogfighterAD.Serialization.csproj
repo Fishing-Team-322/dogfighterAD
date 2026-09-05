@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\DogfighterAD.Domain\DogfighterAD.Domain.csproj" />
+  </ItemGroup>
+</Project>
