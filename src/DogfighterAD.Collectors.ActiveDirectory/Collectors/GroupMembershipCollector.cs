@@ -134,9 +134,14 @@ public sealed class GroupMembershipCollector : ICollector
                      .OrderBy(item => item.GroupId.Value)
                      .ThenBy(item => item.MemberDistinguishedName, StringComparer.OrdinalIgnoreCase))
         {
-            if (!index.TryGetByDn(pending.MemberDistinguishedName, out var memberId))
+            AdObjectId? resolvedMemberId;
+            if (index.TryGetByDn(pending.MemberDistinguishedName, out var knownMemberId))
             {
-                memberId = await ResolveUnknownMemberAsync(
+                resolvedMemberId = knownMemberId;
+            }
+            else
+            {
+                resolvedMemberId = await ResolveUnknownMemberAsync(
                     client,
                     pending.MemberDistinguishedName,
                     context.Target,
@@ -151,7 +156,7 @@ public sealed class GroupMembershipCollector : ICollector
                     cancellationToken).ConfigureAwait(false);
             }
 
-            if (!memberId.HasValue)
+            if (!resolvedMemberId.HasValue)
             {
                 issues.Add(Issue(
                     "collection.memberships.member-unresolved",
@@ -162,7 +167,7 @@ public sealed class GroupMembershipCollector : ICollector
 
             memberships.Add(new AdGroupMembership(
                 pending.GroupId,
-                memberId.Value,
+                resolvedMemberId.Value,
                 MembershipSource.Explicit));
         }
 
