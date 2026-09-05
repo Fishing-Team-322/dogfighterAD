@@ -112,13 +112,29 @@ The collector deliberately does **not** precompute transitive group membership. 
 
 An incomplete AD member range, an unresolved member DN, an unusable supporting identity, a missing referenced group, or a primary group that cannot be resolved prevents `Complete` coverage and produces `Partial`/failure evidence instead of a misleading clean result.
 
+### `directory.trusts` v1
+
+Owner: `ad.ldap.trusts`
+
+This capability depends on `directory.core` and the normalized default `directory.domains` identity.
+
+`Complete` guarantees that the local default-domain LDAP query for `trustedDomain` objects completed and every retained trust relationship has:
+
+- the normalized source domain DNS name;
+- `trustPartner` as the target domain/partner identity;
+- parseable `trustDirection`;
+- parseable `trustType`;
+- parseable `trustAttributes`.
+
+The trusted-domain `securityIdentifier` is normalized to a SID when it is available. Evidence also retains local trust-object metadata such as `objectGUID`, `flatName`, timestamps and raw trust integer values when returned by LDAP.
+
+A local domain with no `trustedDomain` objects may legitimately produce `Complete` coverage with zero trust relationships. Missing/invalid required trust fields produce `Partial` coverage rather than silently substituting zero/default semantics.
+
+This capability describes **configured local trust objects only**. It does not contact the remote domain, validate that the remote side is reachable, authenticate across the trust, or prove that a configured trust is operational. Those would require separate data/validation contracts.
+
 ### `directory.acls` v1
 
 Status: planned. This capability will preserve raw security-relevant ACE semantics required for later rights/path analysis, including object type and inherited object type GUIDs.
-
-### `directory.trusts` v1
-
-Status: planned.
 
 ### `gpo.metadata` v1
 
