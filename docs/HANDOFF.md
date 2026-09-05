@@ -2,7 +2,7 @@
 
 Last updated: 2026-09-05.
 
-This file is the compact source of truth for continuing development in a new chat/session. Read `ARCHITECTURE.md`, `CAPABILITIES.md`, `ROADMAP.md`, `DEVELOPMENT.md` and the ADRs for normative detail.
+This file is the compact source of truth for continuing development in a new chat/session. Read `ARCHITECTURE.md`, `CAPABILITIES.md`, `ROADMAP.md`, `DEVELOPMENT.md`, `COLLECTION_PROFILES.md` and the ADRs for normative detail.
 
 ## Repository and branch
 
@@ -35,6 +35,7 @@ A future Validation/Execution Node may actively confirm selected conditions/path
 8. Snapshot-first collection is strictly read-only. LDAP write APIs are intentionally absent from collector contracts.
 9. Avoid a monolithic collector. Ownership follows data source/query shape and capabilities/dependencies.
 10. Avoid premature microservices, custom graph databases and runtime third-party DLL plugin systems.
+11. Built-in profile capability sets change only deliberately; registering a new capability must not silently make an existing profile heavier.
 
 ## Technology baseline
 
@@ -61,10 +62,41 @@ The active branch contains:
 - capability-driven collection planner with dependency-cycle/ambiguity checks;
 - staged executor with bounded concurrency, cancellation and per-collector timeout;
 - downstream blocking when prerequisite capabilities are unavailable;
+- built-in `minimal` and `audit-full` collection profiles;
+- deterministic execution telemetry for scan/collector durations and execution/capability status counts;
 - read-only LDAP abstraction;
 - paged streaming LDAP enumeration so large subtree scans are not fully buffered by the transport layer;
 - portable GUID/SID/generalized-time/AD FileTime normalization;
 - DACL-only security-descriptor request support and portable self-relative DACL parser.
+
+Current telemetry intentionally does **not** claim LDAP request/page counts, peak memory or benchmark-derived resource budgets yet. Existing hard execution guardrails are `MaxConcurrency` and per-collector timeout. Query/resource instrumentation is a separate pending task.
+
+## Built-in collection profiles
+
+### `minimal`
+
+A lighter inventory/topology profile. It currently requests:
+
+- `directory.core`;
+- `directory.domains`;
+- `directory.users`;
+- `directory.groups`;
+- `directory.computers`;
+- `directory.ous`;
+- `directory.memberships`;
+- `directory.trusts`.
+
+It intentionally excludes DACL and GPO collection. Current guardrails: `MaxConcurrency=2`, per-collector timeout 2 minutes. These are conservative engineering defaults, not benchmark-proven production limits.
+
+### `audit-full`
+
+The broad built-in audit profile over all currently implemented read-only collection capabilities. It includes the minimal set plus:
+
+- `directory.acls`;
+- `gpo.metadata`;
+- `gpo.links`.
+
+It intentionally does not include planned capabilities such as `gpo.sysvol` or `adcs.directory` until those contracts are actually implemented/tested and the profile is deliberately revised. Current guardrails: `MaxConcurrency=4`, per-collector timeout 3 minutes.
 
 ## Implemented collection capabilities
 
@@ -129,6 +161,7 @@ Group Policy Container metadata under `CN=Policies,CN=System,<domain>`, includin
 - `docs/CAPABILITIES.md` — normative meaning of every built-in capability contract/version.
 - `docs/ROADMAP.md` — conservative implementation status and next order of work.
 - `docs/DEVELOPMENT.md` — rules for adding collectors/rules.
+- `docs/COLLECTION_PROFILES.md` — built-in profile semantics and telemetry/guardrail status.
 - `docs/adr/` — durable architectural decisions.
 - `docs/HANDOFF.md` — this continuation summary.
 
@@ -141,7 +174,7 @@ Do not start a large rule library yet. Finish Collection Core v1 first.
 Recommended order:
 
 1. Design and implement `gpo.sysvol v1` as strictly read-only GPO settings/file collection with explicit per-file/per-setting coverage. Do not collect unrelated secrets from SYSVOL.
-2. Add collection profiles (`minimal`, `audit-full`, later custom) and resource/query telemetry/budgets.
+2. Instrument LDAP request/page counts and design benchmark-driven per-capability query/resource budgets. Add peak-memory measurement at benchmark/integration level rather than guessing thresholds.
 3. Design deterministic snapshot serialization and the portable `.dogad` artifact, including integrity metadata and backwards-compatible schema/version handling.
 4. Add real integration tests against MINILAB/GOAD, including clean and intentionally vulnerable fixtures, partial-access cases and larger membership/ACL examples.
 5. Then implement the Rule Engine with capability-version prerequisite checks, stable finding fingerprints, evidence references, deterministic results and `NotVerified` behavior.
@@ -188,4 +221,4 @@ Current development is defensive/read-only AD collection and assessment. Do not 
 
 Tell the next assistant:
 
-> Continue DogfighterAD from GitHub repository `kusotsu/dogfighterAD`, branch `foundation/snapshot-core`. Read `docs/HANDOFF.md`, `docs/ARCHITECTURE.md`, `docs/CAPABILITIES.md`, `docs/ROADMAP.md`, `docs/DEVELOPMENT.md` and ADRs first. Fetch current branch/CI before writing. Preserve the snapshot-first/read-only architecture. Continue from the immediate-next-work section; do not restart the project or rewrite working collectors without a concrete reason.
+> Continue DogfighterAD from GitHub repository `kusotsu/dogfighterAD`, branch `foundation/snapshot-core`. Read `docs/HANDOFF.md`, `docs/ARCHITECTURE.md`, `docs/CAPABILITIES.md`, `docs/ROADMAP.md`, `docs/DEVELOPMENT.md`, `docs/COLLECTION_PROFILES.md` and ADRs first. Fetch current branch/CI before writing. Preserve the snapshot-first/read-only architecture. Continue from the immediate-next-work section; do not restart the project or rewrite working collectors without a concrete reason.
