@@ -123,6 +123,24 @@ public static class SnapshotInvariantValidator
             }
         }
 
+        var descriptorTargets = new HashSet<AdObjectId>();
+        foreach (var descriptor in content.SecurityDescriptors)
+        {
+            if (!knownObjectIds.Contains(descriptor.TargetObjectId))
+            {
+                violations.Add(new(
+                    "snapshot.security-descriptor.unknown-target",
+                    $"Security descriptor references unknown target object {descriptor.TargetObjectId}."));
+            }
+
+            if (!descriptorTargets.Add(descriptor.TargetObjectId))
+            {
+                violations.Add(new(
+                    "snapshot.security-descriptor.duplicate-target",
+                    $"Security descriptor for target {descriptor.TargetObjectId} appears more than once."));
+            }
+        }
+
         foreach (var ace in content.Aces)
         {
             if (!knownObjectIds.Contains(ace.TargetObjectId))

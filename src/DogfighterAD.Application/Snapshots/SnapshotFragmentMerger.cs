@@ -59,6 +59,8 @@ public sealed class SnapshotFragmentMerger
                 .ThenBy(x => x.TrustDirection)
                 .ThenBy(x => x.TrustType)
                 .ToArray(),
+            SecurityDescriptors = MergeSecurityDescriptors(
+                fragments.SelectMany(x => x.Content.SecurityDescriptors)),
             Aces = fragments
                 .SelectMany(x => x.Content.Aces)
                 .Distinct()
@@ -140,6 +142,29 @@ public sealed class SnapshotFragmentMerger
 
         return result
             .OrderBy(x => x.Id.Value)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<AdSecurityDescriptor> MergeSecurityDescriptors(
+        IEnumerable<AdSecurityDescriptor> descriptors)
+    {
+        var result = new List<AdSecurityDescriptor>();
+        var seen = new HashSet<AdObjectId>();
+
+        foreach (var descriptor in descriptors)
+        {
+            if (!seen.Add(descriptor.TargetObjectId))
+            {
+                throw MergeError(
+                    "snapshot.fragment.duplicate-security-descriptor",
+                    $"Multiple collector fragments produced a security descriptor for object {descriptor.TargetObjectId}.");
+            }
+
+            result.Add(descriptor);
+        }
+
+        return result
+            .OrderBy(x => x.TargetObjectId.Value)
             .ToArray();
     }
 
