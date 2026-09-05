@@ -21,18 +21,18 @@ internal sealed class SecurityDescriptorDaclParser
     {
         if (securityDescriptor.Length < 20)
         {
-            return ParsedDacl.Failure(0, AdDaclState.NotPresent, "Security descriptor is shorter than the self-relative header.");
+            return ParsedDacl.Failure(0, AdDaclState.NotPresent, false, "Security descriptor is shorter than the self-relative header.");
         }
 
         if (securityDescriptor[0] != 1)
         {
-            return ParsedDacl.Failure(0, AdDaclState.NotPresent, $"Unsupported security descriptor revision {securityDescriptor[0]}.");
+            return ParsedDacl.Failure(0, AdDaclState.NotPresent, false, $"Unsupported security descriptor revision {securityDescriptor[0]}.");
         }
 
         var control = BinaryPrimitives.ReadUInt16LittleEndian(securityDescriptor.Slice(2, 2));
         if ((control & SeSelfRelative) == 0)
         {
-            return ParsedDacl.Failure(control, AdDaclState.NotPresent, "Security descriptor is not self-relative.");
+            return ParsedDacl.Failure(control, AdDaclState.NotPresent, false, "Security descriptor is not self-relative.");
         }
 
         if ((control & SeDaclPresent) == 0)
@@ -48,7 +48,7 @@ internal sealed class SecurityDescriptorDaclParser
 
         if (daclOffset > int.MaxValue || daclOffset + 8u > securityDescriptor.Length)
         {
-            return ParsedDacl.Failure(control, AdDaclState.Present, "DACL offset points outside the security descriptor.");
+            return ParsedDacl.Failure(control, AdDaclState.Present, true, "DACL offset points outside the security descriptor.");
         }
 
         var aclOffset = (int)daclOffset;
@@ -56,14 +56,14 @@ internal sealed class SecurityDescriptorDaclParser
         var aclRevision = acl[0];
         if (aclRevision is not 2 and not 4)
         {
-            return ParsedDacl.Failure(control, AdDaclState.Present, $"Unsupported ACL revision {aclRevision}.");
+            return ParsedDacl.Failure(control, AdDaclState.Present, true, $"Unsupported ACL revision {aclRevision}.");
         }
 
         var aclSize = BinaryPrimitives.ReadUInt16LittleEndian(acl.Slice(2, 2));
         var aceCount = BinaryPrimitives.ReadUInt16LittleEndian(acl.Slice(4, 2));
         if (aclSize < 8 || aclOffset + aclSize > securityDescriptor.Length)
         {
-            return ParsedDacl.Failure(control, AdDaclState.Present, "DACL size points outside the security descriptor.");
+            return ParsedDacl.Failure(control, AdDaclState.Present, true, "DACL size points outside the security descriptor.");
         }
 
         if (aceCount == 0)
@@ -79,7 +79,7 @@ internal sealed class SecurityDescriptorDaclParser
         {
             if (aceOffset + 4 > aclEnd)
             {
-                return ParsedDacl.Failure(control, AdDaclState.Present, $"ACE {aceIndex} header exceeds DACL bounds.", aces);
+                return ParsedDacl.Failure(control, AdDaclState.Present, true, $"ACE {aceIndex} header exceeds DACL bounds.", aces);
             }
 
             var aceType = securityDescriptor[aceOffset];
@@ -87,7 +87,7 @@ internal sealed class SecurityDescriptorDaclParser
             var aceSize = BinaryPrimitives.ReadUInt16LittleEndian(securityDescriptor.Slice(aceOffset + 2, 2));
             if (aceSize < 4 || aceOffset + aceSize > aclEnd)
             {
-                return ParsedDacl.Failure(control, AdDaclState.Present, $"ACE {aceIndex} size exceeds DACL bounds.", aces);
+                return ParsedDacl.Failure(control, AdDaclState.Present, true, $"ACE {aceIndex} size exceeds DACL bounds.", aces);
             }
 
             if (!TryParseAce(
@@ -100,6 +100,7 @@ internal sealed class SecurityDescriptorDaclParser
                 return ParsedDacl.Failure(
                     control,
                     AdDaclState.Present,
+                    true,
                     $"ACE {aceIndex}: {error}",
                     aces);
             }
@@ -228,6 +229,7 @@ internal sealed class SecurityDescriptorDaclParser
 internal sealed record ParsedDacl(
     ushort ControlFlags,
     AdDaclState State,
+    bool DescriptorStateReliable,
     IReadOnlyList<ParsedDaclAce> Aces,
     string? Error)
 {
@@ -237,14 +239,15 @@ internal sealed record ParsedDacl(
         ushort controlFlags,
         AdDaclState state,
         IReadOnlyList<ParsedDaclAce> aces) =>
-        new(controlFlags, state, aces, null);
+        new(controlFlags, state, true, aces, null);
 
     public static ParsedDacl Failure(
         ushort controlFlags,
         AdDaclState state,
+        bool descriptorStateReliable,
         string error,
         IReadOnlyList<ParsedDaclAce>? aces = null) =>
-        new(controlFlags, state, aces ?? [], error);
+        new(controlFlags, state, descriptorStateReliable, aces ?? [], error);
 }
 
 internal sealed record ParsedDaclAce(
