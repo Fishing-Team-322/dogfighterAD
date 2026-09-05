@@ -224,6 +224,13 @@ public static class SnapshotInvariantValidator
                     $"Capability coverage '{item.CapabilityId}' appears more than once."));
             }
 
+            if (item.ContractVersion < 1)
+            {
+                violations.Add(new(
+                    "snapshot.coverage.invalid-contract-version",
+                    $"Capability '{item.CapabilityId}' has invalid contract version {item.ContractVersion}."));
+            }
+
             if (item.CompletedAt < item.StartedAt)
             {
                 violations.Add(new(

@@ -93,6 +93,21 @@ public sealed class SnapshotFragmentMergerTests
         Assert.Equal(CapabilityStatus.Partial, Assert.Single(merged.Coverage).Status);
     }
 
+    [Fact]
+    public void Merge_CoverageKeepsWeakestGuaranteedContractVersion()
+    {
+        var v2 = CreateCoverage("directory.users") with { ContractVersion = 2 };
+        var v3 = CreateCoverage("directory.users") with { ContractVersion = 3 };
+
+        var merged = new SnapshotFragmentMerger().Merge(
+        [
+            new SnapshotFragment { Coverage = [v3] },
+            new SnapshotFragment { Coverage = [v2] }
+        ]);
+
+        Assert.Equal(2, Assert.Single(merged.Coverage).ContractVersion);
+    }
+
     private static AdUser CreateUser(string id, string dn, string samAccountName) =>
         new()
         {
@@ -106,6 +121,7 @@ public sealed class SnapshotFragmentMergerTests
         new()
         {
             CapabilityId = capability,
+            ContractVersion = 1,
             Status = CapabilityStatus.Complete,
             StartedAt = DateTimeOffset.UnixEpoch,
             CompletedAt = DateTimeOffset.UnixEpoch

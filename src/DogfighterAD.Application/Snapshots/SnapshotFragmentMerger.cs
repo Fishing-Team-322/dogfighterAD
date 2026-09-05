@@ -152,6 +152,7 @@ public sealed class SnapshotFragmentMerger
             .Select(group => new CapabilityCoverage
             {
                 CapabilityId = group.Key,
+                ContractVersion = group.Min(x => x.ContractVersion),
                 Status = MergeCapabilityStatus(group.Select(x => x.Status)),
                 StartedAt = group.Min(x => x.StartedAt),
                 CompletedAt = group.Max(x => x.CompletedAt),
