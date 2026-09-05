@@ -80,6 +80,7 @@ public sealed class DogadArtifactSerializer
         try
         {
             using var archive = new ZipArchive(source, ZipArchiveMode.Read, leaveOpen: true);
+            ValidateContainerEntries(archive);
             var manifestEntry = GetRequiredUniqueEntry(archive, DogadFormat.ManifestEntryName);
             var payloadEntry = GetRequiredUniqueEntry(archive, DogadFormat.SnapshotEntryName);
 
@@ -190,6 +191,24 @@ public sealed class DogadArtifactSerializer
         entry.ExternalAttributes = 0;
         await using var stream = entry.Open();
         await stream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void ValidateContainerEntries(ZipArchive archive)
+    {
+        var unexpected = archive.Entries
+            .Where(entry =>
+                !StringComparer.Ordinal.Equals(entry.FullName, DogadFormat.ManifestEntryName) &&
+                !StringComparer.Ordinal.Equals(entry.FullName, DogadFormat.SnapshotEntryName))
+            .Select(entry => entry.FullName)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        if (unexpected.Length > 0)
+        {
+            throw new DogadArtifactException(
+                "dogad.container.entry-unexpected",
+                $".dogad format v{DogadFormat.CurrentVersion} does not allow unexpected entries: {string.Join(", ", unexpected)}.");
+        }
     }
 
     private static ZipArchiveEntry GetRequiredUniqueEntry(ZipArchive archive, string name)
