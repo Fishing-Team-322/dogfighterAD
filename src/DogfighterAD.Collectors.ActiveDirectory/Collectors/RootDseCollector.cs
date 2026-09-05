@@ -106,6 +106,8 @@ public sealed class RootDseCollector : ICollector
                 new CapabilityCoverage
                 {
                     CapabilityId = CollectionCapabilities.DirectoryCore,
+                    ContractVersion = CapabilityContractCatalog.GetCurrentVersion(
+                        CollectionCapabilities.DirectoryCore),
                     Status = status,
                     StartedAt = startedAt,
                     CompletedAt = completedAt,
@@ -243,6 +245,8 @@ public sealed class RootDseCollector : ICollector
                 new CapabilityCoverage
                 {
                     CapabilityId = CollectionCapabilities.DirectoryCore,
+                    ContractVersion = CapabilityContractCatalog.GetCurrentVersion(
+                        CollectionCapabilities.DirectoryCore),
                     Status = CapabilityStatus.Failed,
                     StartedAt = startedAt,
                     CompletedAt = completedAt,

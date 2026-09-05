@@ -42,7 +42,13 @@ public sealed record RuleMetadata
     public required string Title { get; init; }
     public required string Category { get; init; }
     public required FindingSeverity DefaultSeverity { get; init; }
-    public IReadOnlySet<string> RequiredCapabilities { get; init; } = new HashSet<string>();
+
+    /// <summary>
+    /// Minimum snapshot capability contracts required to evaluate this rule safely.
+    /// Missing or older data must result in NotVerified rather than a clean result.
+    /// </summary>
+    public IReadOnlyList<CapabilityRequirement> RequiredCapabilities { get; init; } = [];
+
     public IReadOnlyList<RuleReference> References { get; init; } = [];
 }
 

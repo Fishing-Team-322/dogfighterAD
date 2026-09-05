@@ -1,0 +1,112 @@
+# Architecture
+
+DogfighterAD is a snapshot-first, evidence-first Active Directory security assessment platform. The current product phase is intentionally read-only.
+
+## Core data flow
+
+```text
+Target AD
+  -> Collection Planner
+  -> read-only Collectors
+  -> Snapshot Fragments
+  -> deterministic Snapshot assembly
+  -> offline Analysis / Rules / Graph projections
+  -> Findings + Evidence
+  -> Reports / API / UI
+
+Future only:
+Findings / Paths -> Validation Planner -> separate Validation Node
+```
+
+## Module boundaries
+
+### DogfighterAD.Domain
+Owns canonical security-assessment data structures. It must not depend on LDAP, SQLite, HTML, CLI, network clients, or UI frameworks.
+
+Current responsibilities:
+- versioned snapshot schema;
+- normalized AD object identities and relationships;
+- collection coverage and issues;
+- observed facts and provenance;
+- stable fact identity;
+- findings/evidence domain structures;
+- capability contract compatibility.
+
+### DogfighterAD.Application
+Owns orchestration and contracts between the domain and infrastructure.
+
+Current responsibilities:
+- collector interface;
+- capability-driven collection planning;
+- staged execution with bounded concurrency;
+- dependency blocking;
+- timeout/cancellation handling;
+- deterministic fragment merging and snapshot assembly.
+
+### DogfighterAD.Collectors.ActiveDirectory
+Owns Active Directory protocol-specific collection code.
+
+Current responsibilities:
+- read-only LDAP transport using `System.DirectoryServices.Protocols`;
+- RootDSE discovery;
+- mapping protocol data into snapshot fragments.
+
+This project must not expose LDAP write operations to collectors. The snapshot-first phase does not modify target infrastructure.
+
+## Architectural invariants
+
+These are deliberate constraints, not style preferences:
+
+1. Rules never query AD directly.
+2. Graph analysis is derived from snapshot data; the graph is not canonical storage.
+3. A collection failure or missing capability cannot be interpreted as a clean result.
+4. Findings must be traceable to evidence/facts.
+5. Collector/protocol details cannot leak into the domain model.
+6. Same logical inputs must produce deterministic logical snapshot ordering and stable fact IDs.
+7. Secrets are not collected merely because they are readable. The scanner targets security-relevant posture and access relationships.
+8. Active validation is a future, separate execution plane.
+
+## Snapshot model
+
+A snapshot contains four major layers:
+
+- `Metadata`: scan identity, target identity, product/schema versions and collector identities.
+- `Content`: normalized AD objects and relationships.
+- `Coverage`: what the scanner attempted, whether it succeeded, and the data-contract version collected.
+- `Observations`: source facts with provenance used to support later findings.
+
+The snapshot is the durable audit artifact. Analysis must be able to run again later without reconnecting to the customer's AD when the required data is present.
+
+## Capability contracts
+
+Capability IDs describe classes of collected data, for example:
+
+- `directory.core`
+- `directory.users`
+- `directory.groups`
+- `directory.memberships`
+- `directory.acls`
+- `directory.trusts`
+- `gpo.metadata`
+- `gpo.sysvol`
+- `adcs.directory`
+
+Every persisted coverage record contains a `ContractVersion`.
+
+A rule declares a minimum required contract version. If a snapshot is older than the rule requirement, the rule must not report the environment as clean; it must be treated as not verifiable with that snapshot.
+
+Capability versions are monotonic: version N+1 must preserve guarantees of version N. If semantics cannot remain compatible, introduce a new capability ID instead of silently changing meaning.
+
+## Stable identities
+
+AD objects use normalized stable identifiers rather than display names wherever possible. Facts use a versioned canonical hash algorithm so evidence identity is not coupled to collector implementation versions.
+
+## Current limitations
+
+The foundation is not yet a complete AD scanner. Currently implemented network collection is RootDSE discovery. Users, groups, computers, OUs, memberships, trusts, ACLs, GPO data and ADCS collection are planned next.
+
+Snapshot serialization (`.dogad`), persistent storage, rule execution, graph analysis and reporting are also not yet implemented.
+
+## Future Validation Plane
+
+Validation/execution is explicitly not part of the snapshot collector. A future Validation Node will consume findings or paths through explicit job contracts. It may run in another process, host, operating system or language without changing the snapshot and analysis core.

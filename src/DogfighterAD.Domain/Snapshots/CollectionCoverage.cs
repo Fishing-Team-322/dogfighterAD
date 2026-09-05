@@ -20,6 +20,13 @@ public static class CollectionCapabilities
 public sealed record CapabilityCoverage
 {
     public required string CapabilityId { get; init; }
+
+    /// <summary>
+    /// Version of the data contract that this coverage record satisfies.
+    /// This is independent from collector and product versions and is persisted in snapshots.
+    /// </summary>
+    public int ContractVersion { get; init; } = 1;
+
     public required CapabilityStatus Status { get; init; }
     public required DateTimeOffset StartedAt { get; init; }
     public required DateTimeOffset CompletedAt { get; init; }
