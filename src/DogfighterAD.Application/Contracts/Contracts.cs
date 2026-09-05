@@ -15,16 +15,14 @@ public interface ICollector
 }
 
 public sealed record CollectionContext(
+    Guid ScanId,
     string Target,
     IReadOnlySet<string> RequestedCapabilities);
 
 public sealed record CollectorResult(
     string CollectorId,
     string CollectorVersion,
-    bool Succeeded,
-    IReadOnlyList<CollectionCapability> Capabilities,
-    IReadOnlyList<object> Facts,
-    IReadOnlyList<string> Warnings);
+    SnapshotFragment Fragment);
 
 public interface IRule
 {
@@ -35,13 +33,25 @@ public interface IRule
         RuleContext context);
 }
 
-public sealed record RuleMetadata(
-    string Id,
-    string Version,
-    string Title,
-    IReadOnlySet<string> RequiredCapabilities);
+public sealed record RuleMetadata
+{
+    public required string Id { get; init; }
+    public required string Version { get; init; }
+    public required string Title { get; init; }
+    public required string Category { get; init; }
+    public required FindingSeverity DefaultSeverity { get; init; }
+    public IReadOnlySet<string> RequiredCapabilities { get; init; } = new HashSet<string>();
+    public IReadOnlyList<RuleReference> References { get; init; } = [];
+}
 
-public sealed record RuleContext(DateTimeOffset AnalysisTime);
+public sealed record RuleReference(
+    string Kind,
+    string Value,
+    string? Url = null);
+
+public sealed record RuleContext(
+    DateTimeOffset AnalysisTime,
+    string RulePackVersion);
 
 public interface ISnapshotRepository
 {
