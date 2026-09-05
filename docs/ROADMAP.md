@@ -31,6 +31,8 @@ This document tracks what is actually implemented in the repository and what is 
 - [x] Local default-domain trust relationship collection from `trustedDomain` objects without contacting remote domains.
 - [x] DACL/ACE collection for normalized default-domain root, users, groups, computers and OUs.
 - [x] Group Policy Container metadata collection from LDAP.
+- [x] GPO link/order/options and domain/OU Block Inheritance collection from LDAP.
+- [x] GPO relationship invariants for unknown targets, duplicate orders and invalid inheritance state.
 - [x] Portable GUID/SID/generalized-time/AD FileTime conversion helpers for LDAP normalization.
 - [x] GitHub Actions build/test pipeline.
 - [x] Core unit tests for fact IDs, capability compatibility, snapshot invariants, fragment merging, collection planning/execution and LDAP collector mapping.
@@ -49,7 +51,7 @@ Order matters. We build broad reliable collection before a large rule library.
 - [x] Trust collector for configured local `trustedDomain` relationships.
 - [x] Security descriptor / DACL collector with object/inherited object GUID handling and explicit null/empty DACL state.
 - [x] GPO metadata collection from LDAP.
-- [ ] GPO link/inheritance collection from LDAP.
+- [x] GPO link/order/options and Block Inheritance collection from LDAP.
 - [ ] SYSVOL read-only GPO settings collection.
 - [ ] Collection profiles (`minimal`, `audit-full`, later custom profiles).
 - [ ] Per-capability query budgets and collection telemetry.
@@ -104,6 +106,16 @@ Order matters. We build broad reliable collection before a large rule library.
 - Credential dumping or collection of secrets simply because the account can read them.
 - A custom graph database before measurement proves it is necessary.
 - Reimplementing every existing AD security tool instead of focusing on a coherent audit workflow.
+
+## Immediate next stopping-point tasks
+
+The next chat/development session should start from the current `foundation/snapshot-core` branch and, before adding analysis rules, continue Collection Core v1 in this order:
+
+1. design `gpo.sysvol v1` as a strictly read-only capability with explicit file/setting coverage and no secret collection;
+2. add collection profiles and query/resource telemetry so a full scan has a measurable cost envelope;
+3. define the portable `.dogad` snapshot format, integrity metadata and deterministic serialization;
+4. add lab integration tests against MINILAB/GOAD before declaring the collection core auditor-ready;
+5. only then begin the Rule Engine and initial auditor-facing rule pack.
 
 ## Quality gates before first auditor-facing build
 
