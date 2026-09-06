@@ -5,6 +5,8 @@ namespace DogfighterAD.Collectors.ActiveDirectory.Ldap;
 
 internal static class LdapFailureClassifier
 {
+    private const int InvalidCredentialsResultCode = 49;
+
     public static CollectorOperationalException Create(Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
@@ -23,7 +25,7 @@ internal static class LdapFailureClassifier
     private static CollectorOperationalException FromLdapException(LdapException exception) =>
         exception.ErrorCode switch
         {
-            49 => new CollectorOperationalException(
+            InvalidCredentialsResultCode => new CollectorOperationalException(
                 "collection.ldap.authentication-failed",
                 "LDAP authentication failed (code=49/InvalidCredentials). Verify the supplied username/password and Negotiate prerequisites.",
                 exception),
@@ -54,12 +56,21 @@ internal static class LdapFailureClassifier
         }
 
         var resultCode = response.ResultCode;
+        if ((int)resultCode == InvalidCredentialsResultCode)
+        {
+            return new CollectorOperationalException(
+                "collection.ldap.authentication-failed",
+                "LDAP authentication failed (code=49/InvalidCredentials). Verify the supplied username/password and Negotiate prerequisites.",
+                exception);
+        }
+
         return resultCode switch
         {
-            ResultCode.InvalidCredentials => new CollectorOperationalException(
-                "collection.ldap.authentication-failed",
-                $"LDAP authentication failed (result={resultCode}, code={(int)resultCode}). Verify the supplied username/password and Negotiate prerequisites.",
-                exception),
+            ResultCode.InappropriateAuthentication or ResultCode.AuthMethodNotSupported =>
+                new CollectorOperationalException(
+                    "collection.ldap.authentication-failed",
+                    $"LDAP authentication was rejected (result={resultCode}, code={(int)resultCode}). Verify the supplied identity and Negotiate prerequisites.",
+                    exception),
             ResultCode.Unavailable => new CollectorOperationalException(
                 "collection.ldap.server-unavailable",
                 $"LDAP server reported unavailable (result={resultCode}, code={(int)resultCode}).",
