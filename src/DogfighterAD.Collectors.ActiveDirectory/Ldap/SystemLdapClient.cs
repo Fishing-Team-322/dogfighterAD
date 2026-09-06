@@ -1,6 +1,8 @@
 using System.DirectoryServices.Protocols;
 using System.Globalization;
+using System.Net;
 using System.Runtime.CompilerServices;
+using System.Security;
 using DogfighterAD.Application.Contracts;
 
 namespace DogfighterAD.Collectors.ActiveDirectory.Ldap;
@@ -22,24 +24,42 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
         ArgumentException.ThrowIfNullOrWhiteSpace(target);
         cancellationToken.ThrowIfCancellationRequested();
 
+        // Clone an explicit credential before entering native WLDAP32 code. A timed-out native setup
+        // may continue on its isolated task after the CLI scan scope returns; it must therefore not
+        // depend on the prompt-owned SecureString lifetime.
+        var credentialLease = CreateCredentialLease(_options.Credential);
+
         // WLDAP32 may block synchronously not only in Bind(), but also while initializing/configuring
         // the native LDAP handle. Keep the complete native setup boundary off the orchestration
         // thread and apply an external hard deadline to the whole operation.
-        var setupTask = Task.Run(
-            () => CreateAndBindConnection(target),
-            CancellationToken.None);
+        Task<ConnectionSetupResult> setupTask;
+        try
+        {
+            setupTask = Task.Run(
+                () => CreateAndBindConnection(target, credentialLease),
+                CancellationToken.None);
+        }
+        catch
+        {
+            credentialLease?.Dispose();
+            throw;
+        }
+
         ObserveBackgroundFault(setupTask);
 
         try
         {
-            var connection = await setupTask
+            var setup = await setupTask
                 .WaitAsync(_options.BindTimeout, cancellationToken)
                 .ConfigureAwait(false);
-            return new SystemLdapClient(connection, _options.RequestTimeout);
+            return new SystemLdapClient(
+                setup.Connection,
+                _options.RequestTimeout,
+                setup.CredentialLease);
         }
         catch (TimeoutException exception)
         {
-            DisposeReturnedConnectionAfterCompletion(setupTask);
+            DisposeReturnedSetupAfterCompletion(setupTask);
             throw new CollectorOperationalException(
                 "collection.ldap.bind-timeout",
                 $"LDAP connection/authentication setup did not complete within {_options.BindTimeout} (auth={_options.AuthenticationMode}). Verify target reachability and authentication prerequisites.",
@@ -47,7 +67,7 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            DisposeReturnedConnectionAfterCompletion(setupTask);
+            DisposeReturnedSetupAfterCompletion(setupTask);
             throw;
         }
         catch (CollectorOperationalException)
@@ -60,16 +80,18 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
         }
     }
 
-    private LdapConnection CreateAndBindConnection(string target)
+    private ConnectionSetupResult CreateAndBindConnection(
+        string target,
+        CredentialLease? credentialLease)
     {
         LdapConnection? connection = null;
         try
         {
             var identifier = new LdapDirectoryIdentifier(target, _options.Port);
             var authType = MapAuthenticationMode(_options.AuthenticationMode);
-            connection = _options.Credential is null
+            connection = credentialLease is null
                 ? new LdapConnection(identifier)
-                : new LdapConnection(identifier, _options.Credential, authType);
+                : new LdapConnection(identifier, credentialLease.Credential, authType);
 
             connection.AuthType = authType;
             connection.AutoBind = false;
@@ -77,7 +99,7 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
             connection.SessionOptions.ProtocolVersion = 3;
             connection.SessionOptions.SecureSocketLayer = _options.UseLdaps;
             connection.Bind();
-            return connection;
+            return new ConnectionSetupResult(connection, credentialLease);
         }
         catch (Exception exception)
         {
@@ -86,6 +108,7 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
                 TryDispose(connection);
             }
 
+            credentialLease?.Dispose();
             throw LdapFailureClassifier.Create(exception);
         }
     }
@@ -101,6 +124,35 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
                 "Unsupported LDAP authentication mode.")
         };
 
+    private static CredentialLease? CreateCredentialLease(NetworkCredential? credential)
+    {
+        if (credential is null)
+        {
+            return null;
+        }
+
+        SecureString? passwordCopy = null;
+        try
+        {
+            passwordCopy = credential.SecurePassword.Copy();
+            if (!passwordCopy.IsReadOnly())
+            {
+                passwordCopy.MakeReadOnly();
+            }
+
+            var credentialCopy = string.IsNullOrWhiteSpace(credential.Domain)
+                ? new NetworkCredential(credential.UserName, passwordCopy)
+                : new NetworkCredential(credential.UserName, passwordCopy, credential.Domain);
+
+            return new CredentialLease(credentialCopy, passwordCopy);
+        }
+        catch
+        {
+            passwordCopy?.Dispose();
+            throw;
+        }
+    }
+
     private static void ObserveBackgroundFault(Task task)
     {
         _ = task.ContinueWith(
@@ -110,14 +162,24 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
             TaskScheduler.Default);
     }
 
-    private static void DisposeReturnedConnectionAfterCompletion(Task<LdapConnection> setupTask)
+    private static void DisposeReturnedSetupAfterCompletion(Task<ConnectionSetupResult> setupTask)
     {
         _ = setupTask.ContinueWith(
             static completedTask =>
             {
-                if (completedTask.Status == TaskStatus.RanToCompletion)
+                if (completedTask.Status != TaskStatus.RanToCompletion)
                 {
-                    TryDispose(completedTask.Result);
+                    return;
+                }
+
+                var setup = completedTask.Result;
+                try
+                {
+                    TryDispose(setup.Connection);
+                }
+                finally
+                {
+                    setup.CredentialLease?.Dispose();
                 }
             },
             CancellationToken.None,
@@ -154,6 +216,35 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
             throw new ArgumentOutOfRangeException(nameof(options), "LDAP request timeout must be greater than zero.");
         }
     }
+
+    private sealed record ConnectionSetupResult(
+        LdapConnection Connection,
+        CredentialLease? CredentialLease);
+
+    private sealed class CredentialLease : IDisposable
+    {
+        private readonly SecureString _password;
+        private bool _disposed;
+
+        public CredentialLease(NetworkCredential credential, SecureString password)
+        {
+            Credential = credential ?? throw new ArgumentNullException(nameof(credential));
+            _password = password ?? throw new ArgumentNullException(nameof(password));
+        }
+
+        public NetworkCredential Credential { get; }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _password.Dispose();
+            _disposed = true;
+        }
+    }
 }
 
 internal sealed class SystemLdapClient : IReadOnlyLdapClient
@@ -176,14 +267,17 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
 
     private readonly LdapConnection _connection;
     private readonly TimeSpan _requestTimeout;
+    private readonly IDisposable? _credentialLease;
     private bool _disposed;
 
     public SystemLdapClient(
         LdapConnection connection,
-        TimeSpan requestTimeout)
+        TimeSpan requestTimeout,
+        IDisposable? credentialLease = null)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
         _requestTimeout = requestTimeout;
+        _credentialLease = credentialLease;
     }
 
     public async Task<LdapSearchResult> SearchAsync(
@@ -265,8 +359,15 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
     {
         if (!_disposed)
         {
-            _connection.Dispose();
-            _disposed = true;
+            try
+            {
+                _connection.Dispose();
+            }
+            finally
+            {
+                _credentialLease?.Dispose();
+                _disposed = true;
+            }
         }
 
         return ValueTask.CompletedTask;
