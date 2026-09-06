@@ -26,7 +26,8 @@ public sealed class CollectionExecutor
         CollectionPlan plan,
         Guid scanId,
         string target,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<CollectionProgressEvent>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
 
@@ -71,7 +72,8 @@ public sealed class CollectionExecutor
                         scanId,
                         target,
                         availableData,
-                        cancellationToken).ConfigureAwait(false);
+                        cancellationToken,
+                        progress).ConfigureAwait(false);
                 }
                 finally
                 {
@@ -110,7 +112,8 @@ public sealed class CollectionExecutor
         Guid scanId,
         string target,
         SnapshotFragment availableData,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<CollectionProgressEvent>? progress)
     {
         var collector = planned.Collector;
 
@@ -129,14 +132,24 @@ public sealed class CollectionExecutor
         if (unsatisfiedDependencies.Length > 0)
         {
             var timestamp = _timeProvider.GetUtcNow();
+            const string issueCode = "collection.collector.blocked";
             var fragment = CreateFailureFragment(
                 planned,
                 target,
                 CapabilityStatus.Blocked,
-                "collection.collector.blocked",
+                issueCode,
                 $"Collector was blocked because required capabilities were unavailable: {string.Join(", ", unsatisfiedDependencies)}.",
                 timestamp,
                 timestamp);
+
+            ReportProgress(progress, new CollectionProgressEvent
+            {
+                CollectorId = collector.Id,
+                State = CollectionProgressState.Blocked,
+                Timestamp = timestamp,
+                Elapsed = TimeSpan.Zero,
+                IssueCode = issueCode
+            });
 
             return new CollectorExecutionResult(
                 fragment,
@@ -154,6 +167,14 @@ public sealed class CollectionExecutor
         var startedAt = _timeProvider.GetUtcNow();
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         linkedCancellation.CancelAfter(policy.CollectorTimeout);
+
+        ReportProgress(progress, new CollectionProgressEvent
+        {
+            CollectorId = collector.Id,
+            State = CollectionProgressState.Started,
+            Timestamp = startedAt,
+            Timeout = policy.CollectorTimeout
+        });
 
         try
         {
@@ -181,6 +202,14 @@ public sealed class CollectionExecutor
             var normalized = ValidateAndNormalizeResult(planned, result);
             var completedAt = _timeProvider.GetUtcNow();
 
+            ReportProgress(progress, new CollectionProgressEvent
+            {
+                CollectorId = collector.Id,
+                State = CollectionProgressState.Completed,
+                Timestamp = completedAt,
+                Elapsed = completedAt - startedAt
+            });
+
             return new CollectorExecutionResult(
                 normalized,
                 new CollectorExecutionRecord
@@ -195,19 +224,38 @@ public sealed class CollectionExecutor
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            var completedAt = _timeProvider.GetUtcNow();
+            ReportProgress(progress, new CollectionProgressEvent
+            {
+                CollectorId = collector.Id,
+                State = CollectionProgressState.Canceled,
+                Timestamp = completedAt,
+                Elapsed = completedAt - startedAt
+            });
             throw;
         }
         catch (OperationCanceledException)
         {
             var completedAt = _timeProvider.GetUtcNow();
+            const string issueCode = "collection.collector.timeout";
             var fragment = CreateFailureFragment(
                 planned,
                 target,
                 CapabilityStatus.Failed,
-                "collection.collector.timeout",
+                issueCode,
                 $"Collector exceeded its timeout of {policy.CollectorTimeout}.",
                 startedAt,
                 completedAt);
+
+            ReportProgress(progress, new CollectionProgressEvent
+            {
+                CollectorId = collector.Id,
+                State = CollectionProgressState.TimedOut,
+                Timestamp = completedAt,
+                Elapsed = completedAt - startedAt,
+                Timeout = policy.CollectorTimeout,
+                IssueCode = issueCode
+            });
 
             return new CollectorExecutionResult(
                 fragment,
@@ -233,6 +281,15 @@ public sealed class CollectionExecutor
                 startedAt,
                 completedAt);
 
+            ReportProgress(progress, new CollectionProgressEvent
+            {
+                CollectorId = collector.Id,
+                State = CollectionProgressState.Failed,
+                Timestamp = completedAt,
+                Elapsed = completedAt - startedAt,
+                IssueCode = exception.IssueCode
+            });
+
             return new CollectorExecutionResult(
                 fragment,
                 new CollectorExecutionRecord
@@ -248,14 +305,24 @@ public sealed class CollectionExecutor
         catch (CollectorContractException)
         {
             var completedAt = _timeProvider.GetUtcNow();
+            const string issueCode = "collection.collector.contract-invalid";
             var fragment = CreateFailureFragment(
                 planned,
                 target,
                 CapabilityStatus.Failed,
-                "collection.collector.contract-invalid",
+                issueCode,
                 "Collector returned data that violates its declared capability contract.",
                 startedAt,
                 completedAt);
+
+            ReportProgress(progress, new CollectionProgressEvent
+            {
+                CollectorId = collector.Id,
+                State = CollectionProgressState.Failed,
+                Timestamp = completedAt,
+                Elapsed = completedAt - startedAt,
+                IssueCode = issueCode
+            });
 
             return new CollectorExecutionResult(
                 fragment,
@@ -272,14 +339,24 @@ public sealed class CollectionExecutor
         catch (Exception)
         {
             var completedAt = _timeProvider.GetUtcNow();
+            const string issueCode = "collection.collector.failed";
             var fragment = CreateFailureFragment(
                 planned,
                 target,
                 CapabilityStatus.Failed,
-                "collection.collector.failed",
+                issueCode,
                 "Collector failed with an unexpected error. Detailed exception data is intentionally not stored in the snapshot.",
                 startedAt,
                 completedAt);
+
+            ReportProgress(progress, new CollectionProgressEvent
+            {
+                CollectorId = collector.Id,
+                State = CollectionProgressState.Failed,
+                Timestamp = completedAt,
+                Elapsed = completedAt - startedAt,
+                IssueCode = issueCode
+            });
 
             return new CollectorExecutionResult(
                 fragment,
@@ -292,6 +369,25 @@ public sealed class CollectionExecutor
                     StartedAt = startedAt,
                     CompletedAt = completedAt
                 });
+        }
+    }
+
+    private static void ReportProgress(
+        Action<CollectionProgressEvent>? progress,
+        CollectionProgressEvent progressEvent)
+    {
+        if (progress is null)
+        {
+            return;
+        }
+
+        try
+        {
+            progress(progressEvent);
+        }
+        catch (Exception)
+        {
+            // Runtime diagnostics are best-effort and must never change collection semantics.
         }
     }
 
@@ -463,6 +559,26 @@ public sealed record CollectorExecutionRecord
     public required CollectorExecutionStatus Status { get; init; }
     public required DateTimeOffset StartedAt { get; init; }
     public required DateTimeOffset CompletedAt { get; init; }
+}
+
+public sealed record CollectionProgressEvent
+{
+    public required string CollectorId { get; init; }
+    public required CollectionProgressState State { get; init; }
+    public required DateTimeOffset Timestamp { get; init; }
+    public TimeSpan? Elapsed { get; init; }
+    public TimeSpan? Timeout { get; init; }
+    public string? IssueCode { get; init; }
+}
+
+public enum CollectionProgressState
+{
+    Started,
+    Completed,
+    Failed,
+    TimedOut,
+    Blocked,
+    Canceled
 }
 
 public enum CollectorExecutionStatus
