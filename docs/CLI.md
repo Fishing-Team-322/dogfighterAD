@@ -24,9 +24,15 @@ The publish path must contain both the CLI and the complete `DogfighterAD.Sysvol
 
 ## Authentication model
 
-LDAP always uses `AuthType.Negotiate`.
+LDAP authentication depends on how the identity is supplied:
 
-By default DogfighterAD uses the current operating-system security context. For a controlled lab or assessment where the scanner host is not logged on with the AD identity, `scan` supports an explicit LDAP username with a **hidden interactive password prompt**:
+- no `-u`: current operating-system security context with `AuthType.Negotiate`;
+- explicit `DOMAIN\user`: `AuthType.Ntlm` challenge/response to the explicitly named DC;
+- explicit UPN-style `user@domain`: `AuthType.Negotiate`.
+
+The explicit down-level `DOMAIN\user` path uses NTLM deliberately for the remote non-domain-workstation case. It avoids making the scanner depend on Kerberos KDC/SPN discovery when the operator has already named the DC and only the DC hostname is resolvable. It does not introduce Basic authentication and does not put the password on the command line.
+
+For a controlled lab or assessment where the scanner host is not logged on with the AD identity, `scan` supports an explicit LDAP username with a **hidden interactive password prompt**:
 
 ```powershell
 ./dogfighter scan `
@@ -48,23 +54,29 @@ This preserves the project invariant that credential secrets must not appear in 
 
 `DOMAIN\user` and UPN-style `user@domain` names are supported. For `DOMAIN\user`, the CLI separates the domain and account name before constructing the LDAP network credential.
 
-Explicit LDAP Negotiate credentials require a **DNS hostname target**. An IP literal together with `-u` is rejected before prompting/collection. This avoids ambiguous Kerberos/NTLM fallback behavior and the live-observed case where an explicit Negotiate scan by IP did not return promptly. Use a resolvable DC FQDN (for example `dc.mini.lab`).
+Explicit LDAP credentials require a **DNS hostname target**. An IP literal together with `-u` is rejected before prompting/collection. Use a resolvable DC FQDN (for example `dc.mini.lab`).
 
-### LDAP bind and timeout boundaries
+### LDAP setup and timeout boundaries
 
-`System.DirectoryServices.Protocols` can enter a synchronous native Negotiate bind before an asynchronous LDAP request is available to await. DogfighterAD therefore disables LDAP auto-bind and performs an explicit bind on an isolated worker task. The bind has the configured LDAP timeout (currently 30 seconds) as an external boundary. A bind that does not complete in that interval returns a sanitized `collection.ldap.bind-timeout` issue to the scan rather than holding the orchestration path indefinitely.
+`System.DirectoryServices.Protocols` can enter synchronous native Windows LDAP code while creating/configuring the connection or performing authentication, before an asynchronous request is available to await. DogfighterAD therefore places the **complete native LDAP connection/setup/bind boundary** on an isolated task and applies a separate external bind/setup deadline.
 
-LDAP requests retain their own configured request timeout. In addition, the collection executor invokes collectors outside the orchestration thread and waits with the profile-level collector timeout. That outer boundary covers collectors that block synchronously before returning their `Task`, not only well-behaved asynchronous collectors.
+Current production limits are:
 
-A native Windows LDAP call that ignores cancellation may continue on its isolated background thread until the OS call itself returns; the scan orchestration no longer waits indefinitely for that call. Cleanup of the affected LDAP connection is deferred until the native operation finishes.
+- LDAP connection/authentication setup: 15 seconds;
+- each LDAP request: 30 seconds;
+- profile collector timeout: 2 minutes for `minimal`, 3 minutes for `audit-full`.
 
-After the hidden password prompt completes, `scan` prints a start marker such as:
+If the native connection/authentication setup does not complete within 15 seconds, the scan receives sanitized `collection.ldap.bind-timeout` evidence rather than intentionally waiting for that native call indefinitely. A native Windows call may still continue on its isolated background task until the OS returns it; any connection returned after the deadline is disposed instead of being reused.
+
+LDAP requests retain their own request timeout. In addition, the collection executor invokes collectors outside the orchestration thread and waits with the profile-level collector timeout. That outer boundary covers collectors that block synchronously before returning their `Task`, not only well-behaved asynchronous collectors.
+
+After the hidden password prompt completes, `scan` prints the selected safe runtime mode and deadlines, for example:
 
 ```text
-Starting collection: target=dc.mini.lab profile=minimal collector-timeout=00:02:00.
+Starting collection: target=dc.mini.lab profile=minimal ldap-auth=ntlm bind-timeout=00:00:15 request-timeout=00:00:30 collector-timeout=00:02:00.
 ```
 
-This distinguishes a prompt/input problem from a later collection/bind problem.
+No username/password value is added to that marker. The marker distinguishes prompt/input problems from later LDAP collection problems and makes the expected timeout boundaries visible during live validation.
 
 ### Important SYSVOL distinction
 
@@ -72,7 +84,7 @@ The explicit `-u` credential currently applies to **LDAP only**. `gpo.sysvol` ru
 
 Therefore an `audit-full` scan from a non-domain workstation needs both:
 
-- working DNS/routing to the target domain/DC; and
+- working name resolution/routing to the required domain/DC names; and
 - an OS-level SMB security context authorized to read the returned `\\domain\SYSVOL\...` paths, for example a controlled `runas /netonly` session or another pre-established Windows network logon context.
 
 Explicit LDAP credentials do not repair DNS, routing or SMB authentication. A `minimal` profile can be used first to validate LDAP separately.
@@ -138,11 +150,11 @@ If a controlled environment intentionally returns another DC/authority, approve 
 
 ## Safe failure diagnostics
 
-Collector failures are still evidence-first and do not persist raw exception/server text. Known operational failures may emit a sanitized issue code/message, for example:
+Collector failures are evidence-first and do not persist raw exception/server text. Known operational failures may emit a sanitized issue code/message, for example:
 
 ```text
   directory.core             Failed        items=0 issues=1
-    [Error] collection.ldap.authentication-failed: LDAP authentication failed (code=49/InvalidCredentials). Verify the supplied username/password and Negotiate prerequisites.
+    [Error] collection.ldap.authentication-failed: LDAP authentication failed (code=49/InvalidCredentials). Verify the supplied username/password and authentication prerequisites.
 ```
 
 LDAP diagnostics distinguish at least:
@@ -198,7 +210,7 @@ A `Partial` exit is deliberately non-zero. Incomplete collection must not be sil
 
 The CLI prints:
 
-- collection start marker after any credential prompt;
+- collection start marker after any credential prompt, including selected auth mode and timeout boundaries;
 - snapshot ID;
 - completion status;
 - profile;
@@ -214,8 +226,9 @@ It does not print credential values or arbitrary exception/source payloads on th
 
 - The MINILAB minimal profile has been validated live and completed with the corrected binary SID transport; `audit-full` validation is continuing against observed ACL/GPO/SYSVOL issues.
 - Explicit `-u` credentials currently authenticate LDAP only; SYSVOL/SMB still uses the OS network security context.
-- Explicit Negotiate authentication requires a hostname target; IP literals with `-u` are rejected.
-- Native LDAP bind cancellation is containment-based: the scanner can stop waiting at the configured timeout, but a native OS call may remain on its isolated thread until the OS returns it.
+- Explicit credentials require a hostname target; IP literals with `-u` are rejected.
+- Down-level `DOMAIN\user` explicit credentials currently use NTLM to avoid Kerberos/DC-locator dependency on a non-domain workstation; UPN and current-context paths retain Negotiate.
+- Native LDAP setup cancellation is containment-based: the scanner stops waiting at the configured setup deadline, but a native OS call may remain on its isolated task until the OS returns it.
 - Current collection is primarily default-domain scoped; broader forest/multi-domain work is later.
 - `inspect` is not the future `analyze` command. There is no Rule Engine yet.
 - LDAP request/page counters and peak-memory telemetry are still pending.
