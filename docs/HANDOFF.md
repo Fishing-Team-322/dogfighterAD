@@ -129,6 +129,10 @@ The 28 issues were localized to Builtin groups whose valid `objectSid` values we
 
 The artifact from the pre-fix live run reopened successfully through offline `inspect` with the same snapshot ID. Audit-full has not been run yet, by design.
 
+## Workstation validation update
+
+The workgroup workstation minimal path now passes with explicit MINILAB identity after disabling native LDAP referral chasing before Bind. Three consecutive clean-build runs collected 1 domain, 8 users, 50 groups, 2 computers, 1 OU and 41 memberships, all Complete. See [workstation LDAP run](lab-runs/2026-09-06-workstation-ldap.md). SYSVOL authentication from that workstation is still a separate audit-full prerequisite.
+
 ## Immediate next work
 
 0. Rebuild/pull `9af8b09df281a398894f634c97a396cdfeb90df0` or later and rerun the **same MINILAB minimal fixture**. Do not add new collection features before this comparison.

@@ -101,8 +101,7 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
             connection.AuthType = authType;
             connection.AutoBind = false;
             connection.Timeout = _options.RequestTimeout;
-            connection.SessionOptions.ProtocolVersion = 3;
-            connection.SessionOptions.SecureSocketLayer = _options.UseLdaps;
+            ConfigureSession(connection, _options.UseLdaps);
             connection.Bind();
             return new ConnectionSetupResult(connection, credentialLease);
         }
@@ -116,6 +115,15 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
             credentialLease?.Dispose();
             throw LdapFailureClassifier.Create(exception);
         }
+    }
+
+    internal static void ConfigureSession(LdapConnection connection, bool useLdaps)
+    {
+        connection.SessionOptions.ProtocolVersion = 3;
+        connection.SessionOptions.SecureSocketLayer = useLdaps;
+        // Collectors query the selected naming context on the selected server. Native referral
+        // chasing can otherwise initiate unscoped discovery/authentication on a workgroup host.
+        connection.SessionOptions.ReferralChasing = ReferralChasingOptions.None;
     }
 
     internal static LdapDirectoryIdentifier CreateDirectoryIdentifier(

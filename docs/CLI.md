@@ -58,6 +58,10 @@ Explicit LDAP credentials require a **DNS hostname target**. An IP literal toget
 
 For the explicit-credential path, DogfighterAD also marks that FQDN as the **exact named LDAP server** when constructing `LdapDirectoryIdentifier` (`fullyQualifiedDnsHostName: true`, TCP/connectionless false). This is intentional: Windows LDAP otherwise may treat a supplied host-like name as something to rediscover and perform extra locator/name-resolution work before connecting. The current-OS-context path retains the older discovery-capable identifier semantics because `--target` may legitimately be a domain rather than a specific DC.
 
+### LDAP referral scope
+
+Connections explicitly disable automatic native LDAP referral chasing before binding. Current collectors query the selected naming context on the selected server; referred partitions/servers are not implicitly assessed. This prevents background discovery/authentication to unconfigured referral destinations on a workgroup workstation. It does not remove the need for working DNS, credentials or SMB access. See [workstation validation](lab-runs/2026-09-06-workstation-ldap.md).
+
 ### LDAP setup and timeout boundaries
 
 `System.DirectoryServices.Protocols` can enter synchronous native Windows LDAP code while creating/configuring the connection or performing authentication, before an asynchronous request is available to await. DogfighterAD therefore places the **complete native LDAP connection/setup/bind boundary** on an isolated task and applies a separate external bind/setup deadline.
