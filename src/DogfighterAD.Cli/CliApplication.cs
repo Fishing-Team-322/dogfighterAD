@@ -80,12 +80,12 @@ internal static class CliApplication
             return CliExitCodes.InvalidArguments;
         }
 
-        var ldapCredential = command.Username is null
+        using var ldapCredential = command.Username is null
             ? null
             : await ConsoleCredentialPrompt
                 .ReadNetworkCredentialAsync(command.Username, error, cancellationToken)
                 .ConfigureAwait(false);
-        var collectors = CollectionComposition.CreateCollectors(command, ldapCredential);
+        var collectors = CollectionComposition.CreateCollectors(command, ldapCredential?.Credential);
         var workflow = new ScanWorkflow();
         var result = await workflow.ExecuteAsync(
                 new ScanWorkflowRequest
