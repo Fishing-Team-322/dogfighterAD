@@ -34,6 +34,16 @@ internal static class CoverageSummaryWriter
             await writer.WriteLineAsync(
                     $"  {item.CapabilityId,-26} {item.Status,-13} items={item.ObservedItemCount} issues={item.Issues.Count}")
                 .ConfigureAwait(false);
+
+            foreach (var issue in item.Issues
+                         .OrderBy(x => x.Code, StringComparer.Ordinal)
+                         .ThenBy(x => x.Message, StringComparer.Ordinal)
+                         .ThenBy(x => x.Target, StringComparer.Ordinal))
+            {
+                await writer.WriteLineAsync(
+                        $"    [{issue.Severity}] {issue.Code}: {issue.Message}")
+                    .ConfigureAwait(false);
+            }
         }
     }
 }
