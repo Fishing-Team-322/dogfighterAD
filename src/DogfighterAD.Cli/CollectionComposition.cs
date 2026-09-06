@@ -1,3 +1,4 @@
+using System.Net;
 using DogfighterAD.Application.Contracts;
 using DogfighterAD.Collectors.ActiveDirectory.Collectors;
 using DogfighterAD.Collectors.ActiveDirectory.Ldap;
@@ -7,7 +8,9 @@ namespace DogfighterAD.Cli;
 
 internal static class CollectionComposition
 {
-    public static IReadOnlyCollection<ICollector> CreateCollectors(ScanCommand command)
+    public static IReadOnlyCollection<ICollector> CreateCollectors(
+        ScanCommand command,
+        NetworkCredential? ldapCredential = null)
     {
         ArgumentNullException.ThrowIfNull(command);
 
@@ -15,7 +18,8 @@ internal static class CollectionComposition
         {
             Port = command.LdapPort ?? (command.UseLdaps ? 636 : 389),
             UseLdaps = command.UseLdaps,
-            RequestTimeout = TimeSpan.FromSeconds(30)
+            RequestTimeout = TimeSpan.FromSeconds(30),
+            Credential = ldapCredential
         });
         var sysvolFactory = new SystemSysvolClientFactory();
         var sysvolOptions = new SysvolClientOptions
