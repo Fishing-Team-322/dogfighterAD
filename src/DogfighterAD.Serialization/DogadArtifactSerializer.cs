@@ -138,13 +138,15 @@ public sealed class DogadArtifactSerializer
                     exception);
             }
 
-            if (snapshot.Metadata.SnapshotId != manifest.SnapshotId ||
+            if (snapshot.Metadata is null ||
+                snapshot.Metadata.CompletedAt != manifest.SnapshotCompletedAt ||
+                snapshot.Metadata.SnapshotId != manifest.SnapshotId ||
                 snapshot.Metadata.SchemaVersion != manifest.SnapshotSchemaVersion ||
                 !StringComparer.Ordinal.Equals(snapshot.Metadata.ProductVersion, manifest.ProductVersion))
             {
                 throw new DogadArtifactException(
                     "dogad.manifest.snapshot-mismatch",
-                    "Manifest identity/schema/product metadata does not match snapshot payload metadata.");
+                    "Manifest identity/schema/product/completion metadata does not match snapshot payload metadata.");
             }
 
             var violations = SnapshotInvariantValidator.Validate(snapshot);
@@ -316,6 +318,7 @@ public sealed class DogadArtifactSerializer
 
         if (string.IsNullOrWhiteSpace(manifest.ProductVersion) ||
             string.IsNullOrWhiteSpace(manifest.PayloadPath) ||
+            string.IsNullOrWhiteSpace(manifest.PayloadSha256) ||
             manifest.PayloadSha256.Length != 64 ||
             manifest.PayloadSha256.Any(character => !Uri.IsHexDigit(character)))
         {

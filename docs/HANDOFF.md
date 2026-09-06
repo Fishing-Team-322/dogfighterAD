@@ -1,6 +1,6 @@
 # DogfighterAD development handoff
 
-Last updated: 2026-09-05.
+Last updated: 2026-09-06.
 
 This is the compact continuation source of truth. Read `ARCHITECTURE.md`, `CAPABILITIES.md`, `ROADMAP.md`, `DEVELOPMENT.md`, `COLLECTION_PROFILES.md`, `DOGAD_FORMAT.md` and ADRs before substantial changes.
 
@@ -92,6 +92,7 @@ SHA-256 is integrity detection, not an authenticity signature. Current implement
 
 ## Immediate next work
 
+0. Close the outstanding SYSVOL scope and blocking-I/O/resource issues in the [foundation review](reviews/2026-09-06-foundation-review.md). The review added 33 regression cases and targeted fixes; 100 tests passed locally. CI runs Windows and Linux. No live AD run was performed.
 1. Build the live MINILAB/GOAD integration harness and first end-to-end audit-full snapshot/artifact round trip.
 2. Instrument LDAP request/page counts and benchmark query volume/duration/peak memory.
 3. Harden partial-access/referral/SYSVOL behavior from real lab observations.

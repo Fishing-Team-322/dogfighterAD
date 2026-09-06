@@ -89,6 +89,7 @@ This document tracks what is actually implemented in the repository. An item is 
 
 ## Immediate next stopping-point tasks
 
+0. Close the SYSVOL scope, blocking-I/O deadline and streaming byte-budget gaps in the [foundation review](reviews/2026-09-06-foundation-review.md). New offline regression tests cover 33 additional cases; they do not replace lab integration.
 1. Build the first live integration path: `audit-full -> AdSnapshot -> .dogad -> offline read` against MINILAB/GOAD.
 2. Instrument LDAP request/page counts and measure query volume, duration and peak memory on lab sizes before setting budgets.
 3. Harden partial/referral/inaccessible SYSVOL and LDAP behavior from real lab fixtures.

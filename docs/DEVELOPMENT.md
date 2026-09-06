@@ -77,7 +77,7 @@ Do not label a calculated possibility as actively confirmed.
 
 For every new foundation behavior, prefer tests before broad feature expansion.
 
-Current CI builds with warnings treated as errors and runs the core test suite on Linux/.NET 10. Protocol behavior that requires Windows or a real AD will get dedicated integration jobs later.
+Current CI builds with warnings treated as errors and runs the core test suite on Windows and Linux/.NET 10. Use the executable test command documented in the [foundation review](reviews/2026-09-06-foundation-review.md). Protocol behavior that requires Windows or a real AD will get dedicated integration jobs later.
 
 Planned test layers:
 

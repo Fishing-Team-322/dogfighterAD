@@ -167,6 +167,8 @@ public sealed class CollectionExecutor
                 .CollectAsync(context, linkedCancellation.Token)
                 .ConfigureAwait(false);
 
+            // A collector may return successfully after cancellation was requested.
+            linkedCancellation.Token.ThrowIfCancellationRequested();
             var normalized = ValidateAndNormalizeResult(planned, result);
             var completedAt = _timeProvider.GetUtcNow();
 

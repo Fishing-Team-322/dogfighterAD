@@ -142,9 +142,9 @@ internal static class SysvolPolicyParsers
                 }
             ]);
         }
-        catch (XmlException exception)
+        catch (XmlException)
         {
-            return ParsedSettingsResult.Failed($"Preferences XML is malformed: {exception.Message}");
+            return ParsedSettingsResult.Failed("Preferences XML is malformed. Source content is intentionally omitted.");
         }
     }
 
@@ -240,6 +240,11 @@ internal static class SysvolPolicyParsers
 
     private static string DecodeText(byte[] bytes)
     {
+        if (bytes.AsSpan().StartsWith(new byte[] { 0xEF, 0xBB, 0xBF }))
+        {
+            bytes = bytes[3..];
+        }
+
         if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
         {
             return Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2);

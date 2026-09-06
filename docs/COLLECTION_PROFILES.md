@@ -39,9 +39,9 @@ Defaults: `MaxConcurrency=4`, per-collector timeout 3 minutes.
 
 ## Current guardrails
 
-`CollectionProfile` feeds the planner/executor with requested capabilities, optional preferred provider mapping, max concurrency and per-collector hard timeout. Timed-out collectors become failed coverage and downstream dependencies are blocked; incomplete collection is never converted into a clean result.
+`CollectionProfile` feeds the planner/executor with requested capabilities, optional preferred provider mapping, max concurrency and per-collector cooperative timeout. Collectors that observe cancellation, including immediately after returning, become failed coverage and downstream dependencies are blocked; incomplete collection is never converted into a clean result.
 
-The current concurrency/timeouts are conservative engineering defaults, not benchmark-derived production limits.
+The current concurrency/timeouts are engineering defaults, not benchmark-derived production limits. Blocking filesystem operations can still exceed the timeout; the executor does not terminate a stuck collector. See the [review](reviews/2026-09-06-foundation-review.md) for open SYSVOL scope and resource-boundary issues.
 
 ## Current telemetry
 
