@@ -39,6 +39,41 @@ public sealed class LdapAuthenticationModeTests
     }
 
     [Fact]
+    public void ExplicitCredential_UsesNamedServerBinding()
+    {
+        var credential = new NetworkCredential("alice", "synthetic-test-password", "MINILAB");
+
+        Assert.True(CollectionComposition.UsesExplicitNamedServerBinding(credential));
+        Assert.False(CollectionComposition.UsesExplicitNamedServerBinding(null));
+    }
+
+    [Fact]
+    public void DirectoryIdentifier_CanMarkExactFqdnServer()
+    {
+        var identifier = SystemLdapClientFactory.CreateDirectoryIdentifier(
+            "dc.mini.lab",
+            389,
+            fullyQualifiedDnsHostName: true);
+
+        Assert.True(identifier.FullyQualifiedDnsHostName);
+        Assert.False(identifier.Connectionless);
+        Assert.Equal(389, identifier.PortNumber);
+        Assert.Equal(["dc.mini.lab"], identifier.Servers);
+    }
+
+    [Fact]
+    public void DirectoryIdentifier_PreservesDiscoverySemanticsWhenServerBindIsNotRequested()
+    {
+        var identifier = SystemLdapClientFactory.CreateDirectoryIdentifier(
+            "mini.lab",
+            389,
+            fullyQualifiedDnsHostName: false);
+
+        Assert.False(identifier.FullyQualifiedDnsHostName);
+        Assert.False(identifier.Connectionless);
+    }
+
+    [Fact]
     public void NonPositiveBindTimeout_IsRejected()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
