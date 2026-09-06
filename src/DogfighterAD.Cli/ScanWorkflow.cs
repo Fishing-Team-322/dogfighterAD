@@ -13,6 +13,7 @@ internal sealed record ScanWorkflowRequest
     public required string ProductVersion { get; init; }
     public required CollectionProfile Profile { get; init; }
     public required IReadOnlyCollection<ICollector> Collectors { get; init; }
+    public Action<CollectionProgressEvent>? Progress { get; init; }
 }
 
 internal sealed record ScanWorkflowResult(
@@ -59,7 +60,12 @@ internal sealed class ScanWorkflow
         var plan = _planner.BuildPlan(request.Profile, request.Collectors);
         var scanId = Guid.NewGuid();
         var execution = await _executor
-            .ExecuteAsync(plan, scanId, request.Target, cancellationToken)
+            .ExecuteAsync(
+                plan,
+                scanId,
+                request.Target,
+                cancellationToken,
+                request.Progress)
             .ConfigureAwait(false);
 
         var targetIdentity = BuildTargetIdentity(request.Target, execution.Data.Content);
