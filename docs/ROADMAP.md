@@ -44,6 +44,7 @@ This document tracks what is actually implemented in the repository. An item is 
 - [x] Deterministic portable `.dogad v1` artifact.
 - [x] SHA-256 payload integrity metadata and strict artifact reader.
 - [x] Runnable composition path from profile -> collectors -> `AdSnapshot` -> `.dogad` -> offline readback in synthetic tests.
+- [ ] Cross-platform application-owned SYSVOL authentication/SMB transport proven from a non-domain Windows host and Linux without relying on a pre-existing OS SMB session.
 - [ ] LDAP request/page counting and per-capability query budgets.
 - [ ] Peak-memory/resource telemetry and benchmark-derived thresholds.
 - [ ] Live end-to-end validation against MINILAB/GOAD.
@@ -98,12 +99,15 @@ This document tracks what is actually implemented in the repository. An item is 
 
 ## Immediate next stopping-point tasks
 
-0. Execute and record the first MINILAB validation using `docs/MINILAB_RUNBOOK.md`: `minimal` first, then `audit-full`, with exact commit SHA, lab fixture state, expected/actual counts, coverage statuses and offline `inspect` readback. Store the record under `docs/lab-runs/` using the template; do not commit real/customer `.dogad` artifacts.
-1. Fix/harden any collector, referral, inaccessible LDAP/SYSVOL or partial-coverage differences observed in the real lab. Incomplete data must remain explicit.
-2. After the live path is understood, instrument LDAP request/page counts and measure query volume, duration and peak memory before setting budgets.
-3. Repeat the same validated workflow on the fuller GOAD fixture.
-4. Then implement the Rule Engine with capability-version prerequisites, stable finding fingerprints, evidence references, deterministic results and explicit `NotVerified` semantics.
-5. Build the first high-value auditor rule pack, then diff/retest, JSON/HTML reporting and graph projection.
+0. Keep the domain-joined MINILAB Windows VM as a control environment and execute/record `audit-full` there, because LDAP and both direct-DC/domain-style SYSVOL paths are manually proven on that host. Do not assume any resulting failure is automatically a collector bug; permissions, DNS and lab state remain possible causes.
+1. Build a bounded portability prototype, separate from the production collector path: from explicit credentials, obtain the Kerberos material needed for `cifs/<selected-dc>` and read exactly one known `GPT.INI` over an application-owned SMB2/3 client from (a) the non-domain Windows workstation and (b) Linux.
+2. The prototype must not weaken SYSVOL security semantics. It must verify/anchor the intended server identity, require appropriate SMB signing/integrity, preserve the existing validated `SYSVOL/<domain>/Policies/<gpo-guid>` scope, enforce byte/time limits, and never place passwords in argv, environment variables, logs or temporary files.
+3. Treat SMBLibrary and Kerberos.NET only as candidates during the spike. Before production integration, prove their interoperability against the lab, record negotiated SMB/authentication properties, review licensing/packaging, and keep exact failure-stage diagnostics. If either platform fails, do not paper over the failure with silent NTLM downgrade or relaxed path policy.
+4. Only if the prototype passes on both non-domain Windows and Linux, integrate the portable SMB/authentication path behind the existing `IReadOnlySysvolClient`/worker isolation boundary and add regression/integration coverage. Keep the current filesystem-backed path as a control or compatibility backend until the new transport is proven.
+5. After the live path is understood, instrument LDAP request/page counts and measure query volume, duration and peak memory before setting budgets.
+6. Repeat the same validated workflow on the fuller GOAD fixture.
+7. Then implement the Rule Engine with capability-version prerequisites, stable finding fingerprints, evidence references, deterministic results and explicit `NotVerified` semantics.
+8. Build the first high-value auditor rule pack, then diff/retest, JSON/HTML reporting and graph projection.
 
 The CLI composition landed in commit `76034c859d4798fef551865d9ad36f72e1ca2da8`. CI run `34014916366` passed on Linux and Windows; the Linux execution reported 120 tests with no errors, failures or skips. This proves the synthetic/offline composition and artifact round trip, **not** live AD correctness.
 
