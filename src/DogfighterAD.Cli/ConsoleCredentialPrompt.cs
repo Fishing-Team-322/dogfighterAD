@@ -5,9 +5,10 @@ namespace DogfighterAD.Cli;
 
 internal static class ConsoleCredentialPrompt
 {
-    public static NetworkCredential ReadNetworkCredential(
+    public static async Task<NetworkCredential> ReadNetworkCredentialAsync(
         string username,
-        TextWriter promptWriter)
+        TextWriter promptWriter,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
         ArgumentNullException.ThrowIfNull(promptWriter);
@@ -18,6 +19,7 @@ internal static class ConsoleCredentialPrompt
                 "The LDAP password prompt requires an interactive console; redirected password input is intentionally unsupported.");
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         promptWriter.Write($"LDAP password for {username}: ");
         promptWriter.Flush();
 
@@ -26,6 +28,15 @@ internal static class ConsoleCredentialPrompt
         {
             while (true)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (!Console.KeyAvailable)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(25), cancellationToken)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
                 var key = Console.ReadKey(intercept: true);
                 if (key.Key == ConsoleKey.Enter)
                 {
@@ -56,10 +67,13 @@ internal static class ConsoleCredentialPrompt
         }
 
         password.MakeReadOnly();
+        var retainedPassword = password.Copy();
+        retainedPassword.MakeReadOnly();
+
         var (accountName, domain) = SplitAccountName(username);
         return domain is null
-            ? new NetworkCredential(accountName, password)
-            : new NetworkCredential(accountName, password, domain);
+            ? new NetworkCredential(accountName, retainedPassword)
+            : new NetworkCredential(accountName, retainedPassword, domain);
     }
 
     internal static (string AccountName, string? Domain) SplitAccountName(string username)
