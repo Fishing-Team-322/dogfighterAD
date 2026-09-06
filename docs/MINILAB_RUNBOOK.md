@@ -8,16 +8,19 @@ Do not introduce broad detection rules until this path has been completed and di
 
 Use an assessment identity authorized for read-only directory/SYSVOL access. DogfighterAD must not place passwords in CLI arguments, scripts committed to the repository, `.dogad` artifacts or logs.
 
-LDAP authentication has two supported execution modes:
+LDAP authentication has these current execution paths:
 
-- current operating-system security context; or
-- explicit LDAP username using `-u <DOMAIN\user|user@domain>`, which automatically opens a hidden password prompt.
+- no `-u`: current operating-system security context with Negotiate;
+- explicit `DOMAIN\user`: hidden password prompt followed by NTLM challenge/response to the named DC;
+- explicit `user@domain`: hidden password prompt followed by Negotiate.
+
+The down-level `DOMAIN\user` path uses NTLM deliberately for the remote non-domain-workstation case so the scanner does not require Kerberos KDC/SPN discovery merely to authenticate to an explicitly named DC. There is no Basic-auth fallback.
 
 There is no `-p` password flag. Password command-line options/values are intentionally rejected.
 
 Explicit CLI credentials currently apply to LDAP only. SYSVOL/SMB still uses the operating-system network security context because the isolated worker uses Windows filesystem/SMB APIs.
 
-When `-u` is used, the LDAP target must be a DNS hostname/FQDN. An IP literal is rejected before prompting because explicit Negotiate authentication by IP has ambiguous Kerberos/NTLM behavior and a live workstation test demonstrated a non-returning path. Fix/override lab name resolution and use the DC FQDN instead of using an IP as an authentication workaround.
+When `-u` is used, the LDAP target must be a DNS hostname/FQDN. An IP literal is rejected before prompting. Use the DC FQDN rather than an IP workaround so target identity, AD naming and later SYSVOL validation remain explicit.
 
 Prefer a Windows test host for the first `audit-full` run because SYSVOL/SMB behavior is a primary validation target. The collection code itself remains cross-platform tested where practical.
 
@@ -68,13 +71,13 @@ If LDAP credentials are needed from the workstation, use the hidden prompt form:
 
 The password prompt is automatic after `-u`. Do not add `-p`, `--password` or any password value to the command line.
 
-After the password is accepted by the local prompt, the current CLI prints:
+For this exact `DOMAIN\user` form, the current CLI should print a marker like:
 
 ```text
-Starting collection: target=dc.mini.lab profile=minimal collector-timeout=00:02:00.
+Starting collection: target=dc.mini.lab profile=minimal ldap-auth=ntlm bind-timeout=00:00:15 request-timeout=00:00:30 collector-timeout=00:02:00.
 ```
 
-If this marker never appears, investigate console/prompt handling. If it appears and the scan then waits, the problem is in collection/transport rather than password entry.
+If this marker never appears, investigate console/prompt handling. If it appears and the scan then waits, use the displayed deadlines when judging whether the transport returned normally. A `DOMAIN\user` run that prints `ldap-auth=negotiate` is the wrong build/configuration for the current remote-workstation path.
 
 For an `audit-full` remote run, the LDAP prompt does not create the SMB session. Establish the authorized Windows network context separately (for example a controlled `runas /netonly` shell or an explicit Windows SMB session appropriate to the isolated lab) and then run DogfighterAD from that context.
 
@@ -93,9 +96,9 @@ Known LDAP operational failures include:
 
 Numeric LDAP/result codes may be included in the safe message. Do not infer a bad password from a generic collector failure; use the actual emitted issue classification.
 
-The production LDAP path disables auto-bind and performs the synchronous native Negotiate bind on an isolated task. DogfighterAD stops waiting for that bind after the configured LDAP timeout (currently 30 seconds) and reports `collection.ldap.bind-timeout` if the native call has not returned. LDAP requests retain their own timeout.
+The production LDAP factory isolates the complete native connection/configuration/authentication setup, not only the explicit `Bind()` call. DogfighterAD stops waiting for that setup after 15 seconds and reports `collection.ldap.bind-timeout` if Windows has not returned. LDAP requests retain a separate 30-second timeout.
 
-The profile collector timeout is an additional outer boundary. Collection execution is isolated so even a collector that blocks synchronously before returning a `Task` cannot hold the orchestration thread past that boundary. A native OS LDAP call may remain on its isolated background thread until Windows itself returns it; this is containment rather than a claim that WLDAP32 native calls are forcibly cancellable.
+The profile collector timeout is an additional outer boundary. Collection execution is isolated so even a collector that blocks synchronously before returning a `Task` cannot hold the orchestration thread past that boundary. A native OS LDAP call may remain on its isolated background task until Windows itself returns it; this is containment rather than a claim that WLDAP32 native calls are forcibly cancellable. A connection returned after its setup deadline is disposed and not reused.
 
 A scan that still does not return beyond these documented boundaries is a new live defect and must be recorded with the exact build and last visible output.
 
@@ -239,10 +242,11 @@ Recommended cases:
 8. Referral/inaccessible naming-context fixture when available -> capture actual current behavior before hardening it.
 9. Remote workstation DNS failure -> collection must fail/partial rather than being misdiagnosed as an authentication problem.
 10. Explicit LDAP username with no SMB network context -> minimal may succeed while `gpo.sysvol` remains incomplete; record the distinction.
-11. Explicit LDAP username with an IP-literal target -> parser must reject it immediately with an invalid-arguments result instead of entering Negotiate/network collection.
+11. Explicit LDAP username with an IP-literal target -> parser must reject it immediately with an invalid-arguments result instead of entering LDAP collection.
 12. Wrong explicit LDAP credential in the lab -> expect a sanitized authentication issue (typically `collection.ldap.authentication-failed`) and no credential text in output/artifact.
-13. Stalled explicit Negotiate bind -> expect `collection.ldap.bind-timeout` after the LDAP timeout instead of an indefinitely silent scan.
+13. Stalled native LDAP connection/authentication setup -> expect `collection.ldap.bind-timeout` at the 15-second setup boundary instead of an indefinitely silent scan.
 14. Synthetic collector that blocks synchronously before returning its Task -> executor regression must produce `collection.collector.timeout` at the profile boundary.
+15. Remote `DOMAIN\user` explicit credential -> start marker must show `ldap-auth=ntlm`; a UPN/current-context run should show Negotiate.
 
 For every case record the capability status and issue code/message, not just the process exit or generic console text.
 
