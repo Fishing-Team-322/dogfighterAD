@@ -22,58 +22,84 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
         ArgumentException.ThrowIfNullOrWhiteSpace(target);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var identifier = new LdapDirectoryIdentifier(target, _options.Port);
-        var connection = _options.Credential is null
-            ? new LdapConnection(identifier)
-            : new LdapConnection(identifier, _options.Credential, AuthType.Negotiate);
-
-        connection.AuthType = AuthType.Negotiate;
-        connection.AutoBind = false;
-        connection.Timeout = _options.RequestTimeout;
-        connection.SessionOptions.ProtocolVersion = 3;
-        connection.SessionOptions.SecureSocketLayer = _options.UseLdaps;
-
-        await BindAsync(connection, cancellationToken).ConfigureAwait(false);
-        return new SystemLdapClient(connection, _options.RequestTimeout);
-    }
-
-    private async Task BindAsync(
-        LdapConnection connection,
-        CancellationToken cancellationToken)
-    {
-        // WLDAP32 Negotiate bind is synchronous even when the later request uses
-        // BeginSendRequest. Keep it off the collector/orchestration thread and enforce an
-        // external timeout so DNS/SPN/authentication stalls cannot freeze the scan.
-        var bindTask = Task.Run(
-            () => connection.Bind(),
+        // WLDAP32 may block synchronously not only in Bind(), but also while initializing/configuring
+        // the native LDAP handle. Keep the complete native setup boundary off the orchestration
+        // thread and apply an external hard deadline to the whole operation.
+        var setupTask = Task.Run(
+            () => CreateAndBindConnection(target),
             CancellationToken.None);
-        ObserveBackgroundFault(bindTask);
+        ObserveBackgroundFault(setupTask);
 
         try
         {
-            await bindTask
-                .WaitAsync(_options.RequestTimeout, cancellationToken)
+            var connection = await setupTask
+                .WaitAsync(_options.BindTimeout, cancellationToken)
                 .ConfigureAwait(false);
+            return new SystemLdapClient(connection, _options.RequestTimeout);
         }
         catch (TimeoutException exception)
         {
-            DisposeAfterCompletion(connection, bindTask);
+            DisposeReturnedConnectionAfterCompletion(setupTask);
             throw new CollectorOperationalException(
                 "collection.ldap.bind-timeout",
-                $"LDAP Negotiate bind did not complete within {_options.RequestTimeout}. Verify DC name resolution, domain/SPN reachability and authentication prerequisites.",
+                $"LDAP connection/authentication setup did not complete within {_options.BindTimeout} (auth={_options.AuthenticationMode}). Verify target reachability and authentication prerequisites.",
                 exception);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            DisposeAfterCompletion(connection, bindTask);
+            DisposeReturnedConnectionAfterCompletion(setupTask);
+            throw;
+        }
+        catch (CollectorOperationalException)
+        {
             throw;
         }
         catch (Exception exception)
         {
-            TryDispose(connection);
             throw LdapFailureClassifier.Create(exception);
         }
     }
+
+    private LdapConnection CreateAndBindConnection(string target)
+    {
+        LdapConnection? connection = null;
+        try
+        {
+            var identifier = new LdapDirectoryIdentifier(target, _options.Port);
+            var authType = MapAuthenticationMode(_options.AuthenticationMode);
+            connection = _options.Credential is null
+                ? new LdapConnection(identifier)
+                : new LdapConnection(identifier, _options.Credential, authType);
+
+            connection.AuthType = authType;
+            connection.AutoBind = false;
+            connection.Timeout = _options.RequestTimeout;
+            connection.SessionOptions.ProtocolVersion = 3;
+            connection.SessionOptions.SecureSocketLayer = _options.UseLdaps;
+            connection.Bind();
+            return connection;
+        }
+        catch (Exception exception)
+        {
+            if (connection is not null)
+            {
+                TryDispose(connection);
+            }
+
+            throw LdapFailureClassifier.Create(exception);
+        }
+    }
+
+    internal static AuthType MapAuthenticationMode(LdapAuthenticationMode authenticationMode) =>
+        authenticationMode switch
+        {
+            LdapAuthenticationMode.Negotiate => AuthType.Negotiate,
+            LdapAuthenticationMode.Ntlm => AuthType.Ntlm,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(authenticationMode),
+                authenticationMode,
+                "Unsupported LDAP authentication mode.")
+        };
 
     private static void ObserveBackgroundFault(Task task)
     {
@@ -84,11 +110,16 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
             TaskScheduler.Default);
     }
 
-    private static void DisposeAfterCompletion(LdapConnection connection, Task operationTask)
+    private static void DisposeReturnedConnectionAfterCompletion(Task<LdapConnection> setupTask)
     {
-        _ = operationTask.ContinueWith(
-            static (_, state) => TryDispose((LdapConnection)state!),
-            connection,
+        _ = setupTask.ContinueWith(
+            static completedTask =>
+            {
+                if (completedTask.Status == TaskStatus.RanToCompletion)
+                {
+                    TryDispose(completedTask.Result);
+                }
+            },
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
@@ -111,6 +142,11 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
         if (options.Port is < 1 or > 65535)
         {
             throw new ArgumentOutOfRangeException(nameof(options), "LDAP port must be between 1 and 65535.");
+        }
+
+        if (options.BindTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "LDAP bind timeout must be greater than zero.");
         }
 
         if (options.RequestTimeout <= TimeSpan.Zero)
