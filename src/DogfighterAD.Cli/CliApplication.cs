@@ -80,7 +80,10 @@ internal static class CliApplication
             return CliExitCodes.InvalidArguments;
         }
 
-        var collectors = CollectionComposition.CreateCollectors(command);
+        var ldapCredential = command.Username is null
+            ? null
+            : ConsoleCredentialPrompt.ReadNetworkCredential(command.Username, error);
+        var collectors = CollectionComposition.CreateCollectors(command, ldapCredential);
         var workflow = new ScanWorkflow();
         var result = await workflow.ExecuteAsync(
                 new ScanWorkflowRequest
@@ -130,14 +133,17 @@ internal static class CliApplication
         await writer.WriteLineAsync().ConfigureAwait(false);
         await writer.WriteLineAsync("Usage:").ConfigureAwait(false);
         await writer.WriteLineAsync(
-                "  dogfighter scan --target <host-or-domain> --output <snapshot.dogad> [--profile minimal|audit-full] [--ldaps] [--ldap-port <1-65535>] [--sysvol-authority <host>]...")
+                "  dogfighter scan --target <host-or-domain> --output <snapshot.dogad> [--profile minimal|audit-full] [-u <DOMAIN\\user|user@domain> -p] [--ldaps] [--ldap-port <1-65535>] [--sysvol-authority <host>]...")
             .ConfigureAwait(false);
         await writer.WriteLineAsync(
                 "  dogfighter inspect --snapshot <snapshot.dogad>")
             .ConfigureAwait(false);
         await writer.WriteLineAsync().ConfigureAwait(false);
         await writer.WriteLineAsync(
-                "Authentication: current operating-system security context (LDAP Negotiate). Password/user command-line options are intentionally unsupported.")
+                "Authentication: LDAP defaults to the current operating-system security context. -u/--username with -p/--password enables an explicit LDAP Negotiate credential; -p is a prompt switch and never accepts a password value in arguments.")
+            .ConfigureAwait(false);
+        await writer.WriteLineAsync(
+                "SYSVOL/SMB still uses the operating-system network security context. Explicit LDAP credentials do not establish an SMB session or repair DNS/routing.")
             .ConfigureAwait(false);
         await writer.WriteLineAsync(
                 "scan writes a temporary artifact, reads it back through the strict .dogad reader, and only then atomically replaces the requested output file.")
