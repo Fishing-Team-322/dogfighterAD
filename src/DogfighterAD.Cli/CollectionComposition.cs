@@ -8,6 +8,9 @@ namespace DogfighterAD.Cli;
 
 internal static class CollectionComposition
 {
+    internal static readonly TimeSpan LdapBindTimeout = TimeSpan.FromSeconds(15);
+    internal static readonly TimeSpan LdapRequestTimeout = TimeSpan.FromSeconds(30);
+
     public static IReadOnlyCollection<ICollector> CreateCollectors(
         ScanCommand command,
         NetworkCredential? ldapCredential = null)
@@ -18,7 +21,9 @@ internal static class CollectionComposition
         {
             Port = command.LdapPort ?? (command.UseLdaps ? 636 : 389),
             UseLdaps = command.UseLdaps,
-            RequestTimeout = TimeSpan.FromSeconds(30),
+            BindTimeout = LdapBindTimeout,
+            RequestTimeout = LdapRequestTimeout,
+            AuthenticationMode = SelectAuthenticationMode(ldapCredential),
             Credential = ldapCredential
         });
         var sysvolFactory = new SystemSysvolClientFactory();
@@ -39,5 +44,16 @@ internal static class CollectionComposition
             new GpoLinkCollector(ldapFactory),
             new GpoSysvolCollector(sysvolFactory, sysvolOptions)
         ];
+    }
+
+    internal static LdapAuthenticationMode SelectAuthenticationMode(NetworkCredential? credential)
+    {
+        // A down-level DOMAIN\\user identity from a non-domain workstation should not depend on
+        // Kerberos KDC/SPN discovery merely to reach the explicitly named DC. Use NTLM challenge/
+        // response for that explicit identity. Current-OS-context and UPN credentials retain
+        // Negotiate so Kerberos remains available where the environment supports it.
+        return credential is not null && !string.IsNullOrWhiteSpace(credential.Domain)
+            ? LdapAuthenticationMode.Ntlm
+            : LdapAuthenticationMode.Negotiate;
     }
 }
