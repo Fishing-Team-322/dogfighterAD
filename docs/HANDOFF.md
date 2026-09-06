@@ -49,8 +49,10 @@ Current phase is defensive/read-only. Do not add exploitation, credential dumpin
 - capability coverage and contract-version compatibility;
 - deterministic fragment merger and invariant validation;
 - capability planner and bounded staged executor with cancellation/timeout/dependency blocking;
+- planner handles one collector providing multiple selected capabilities exactly once in the execution graph;
 - `minimal` / `audit-full` profiles and execution status/duration telemetry;
 - streaming paged read-only LDAP transport using current-security-context Negotiate auth;
+- LDAP SID normalization accepts both binary values and validated canonical text values observed from the Windows LDAP API;
 - DACL-only descriptor collection/parsing;
 - read-only SYSVOL abstraction with source-scope validation, per-file/count limits and bounded maxBytes+1 streaming reads;
 - blocking SYSVOL filesystem operations isolated in a disposable helper process with per-operation deadlines, forced process-tree termination and restart after timeout/cancellation;
@@ -78,7 +80,7 @@ Current phase is defensive/read-only. Do not add exploitation, credential dumpin
 
 SYSVOL scope/resource hardening was closed in the offline/cross-platform regression layer by `946c864d8f7431a80fee315b95a05be2d64424d5`, `76def69e30c7330827c1a771ba7da7ceb40f5f1f` and `0e2490b3c2a0dd42f80b399c5c4de24ce57c7854`. ADR 0011 records the worker isolation decision. This is lifecycle isolation, not privilege sandboxing, and real DFS/referral behavior still requires live validation.
 
-The CLI composition landed in `76034c859d4798fef551865d9ad36f72e1ca2da8`. GitHub Actions run `34014916366` passed build and tests on Ubuntu and Windows; the suite is now 120 tests with no failures/skips on Ubuntu. The synthetic CLI workflow test exercises planner -> executor -> snapshot assembly -> `.dogad` write -> strict offline readback without contacting AD.
+The CLI composition landed in `76034c859d4798fef551865d9ad36f72e1ca2da8`. Planner production-registry coverage and the multi-capability fix landed in `1b460ebe33bc45eb555780ecdfd56b741c959425`; CI run `34029391724` passed on Ubuntu and Windows. Textual LDAP SID normalization landed in `9af8b09df281a398894f634c97a396cdfeb90df0`; CI run `34036771409` passed on Ubuntu and Windows. The synthetic CLI workflow still exercises planner -> executor -> snapshot assembly -> `.dogad` write -> strict offline readback without contacting AD.
 
 ## Profiles
 
@@ -109,31 +111,39 @@ SHA-256 is integrity detection, not an authenticity signature. Current implement
 
 ## Still pending before auditor-facing Collection Core is trusted
 
-- live `minimal` and `audit-full -> AdSnapshot -> .dogad -> offline inspect` against MINILAB/GOAD;
+- corrected live `minimal` baseline with memberships executing and expected-vs-actual fixture checks;
+- live `audit-full -> AdSnapshot -> .dogad -> offline inspect` against MINILAB/GOAD;
 - exact expected-vs-actual object/member/GPO/ACL/SYSVOL fixture validation;
 - real DFS/referral/inaccessible LDAP/SYSVOL partial-result fixtures;
 - LDAP request/page counting and query/resource benchmarks;
 - peak-memory measurement, especially `.dogad` serialization;
 - broader forest/multi-domain/ADCS/LAPS/gMSA/Kerberos areas later.
 
-## Latest local validation
+## Latest live validation
 
-See [MINILAB readiness run](lab-runs/2026-09-06-minilab-readiness.md): the running DC is still in WORKGROUP without AD DS/DNS/SYSVOL. A CLI planner bug was fixed with two production-registry regressions (122 tests passing locally). The negative-path scan and artifact readback correctly report Failed; successful live-domain validation is still pending.
+See [MINILAB readiness/live run](lab-runs/2026-09-06-minilab-readiness.md).
+
+The first functioning-domain `minimal` run produced snapshot `24f8fc1b-a591-4b65-9d25-29b4314ff39f` with `Partial`/exit 2: domains=1, users=8, groups=50, computers=2, OUs=1, memberships=0. Core/domains/users/computers/OUs/trusts completed; groups were Partial with 28 issues and memberships were Blocked.
+
+The 28 issues were localized to Builtin groups whose valid `objectSid` values were returned by the Windows LDAP API as text instead of binary. `LdapValueConverters` previously inspected only binary SID values. Commit `9af8b09df281a398894f634c97a396cdfeb90df0` now normalizes validated text and binary SID representations and includes regressions for `S-1-5-32-544` plus malformed text. CI run `34036771409` is green on both supported runners.
+
+The artifact from the pre-fix live run reopened successfully through offline `inspect` with the same snapshot ID. Audit-full has not been run yet, by design.
 
 ## Immediate next work
 
-0. Execute and record the first MINILAB validation using `MINILAB_RUNBOOK.md`: `minimal` first, then `audit-full`, with exact build SHA, fixture state, expected/actual counts, coverage and offline readback. Use `docs/lab-runs/TEMPLATE.md` for the result record.
-1. Fix/harden any collector/partial/referral/SYSVOL differences observed in the real lab. Do not reinterpret incomplete data as clean.
-2. After the live path is understood, instrument LDAP request/page counts and benchmark query volume/duration/peak memory before setting resource budgets.
-3. Repeat the same validated collection workflow on the fuller GOAD fixture.
-4. Then implement Rule Engine: capability-version prerequisites, `NotVerified`, stable finding fingerprints, evidence references and deterministic rule-pack execution.
-5. Add the initial high-value auditor rule pack, then diff/retest, JSON/HTML reporting and graph projection.
+0. Rebuild/pull `9af8b09df281a398894f634c97a396cdfeb90df0` or later and rerun the **same MINILAB minimal fixture**. Do not add new collection features before this comparison.
+1. Confirm `directory.groups` is Complete unless a new real fixture issue is exposed, and confirm `directory.memberships` executes rather than being Blocked. Compare expected/actual group/member counts and reopen the new `.dogad` offline.
+2. Only after corrected minimal is understood, run `audit-full` and fix/harden any ACL/GPO/SYSVOL/referral differences observed in the real lab. Incomplete data must remain explicit.
+3. After the live path is understood, instrument LDAP request/page counts and benchmark query volume/duration/peak memory before setting resource budgets.
+4. Repeat the same validated collection workflow on the fuller GOAD fixture.
+5. Then implement Rule Engine: capability-version prerequisites, `NotVerified`, stable finding fingerprints, evidence references and deterministic rule-pack execution.
+6. Add the initial high-value auditor rule pack, then diff/retest, JSON/HTML reporting and graph projection.
 
 Do **not** start a broad rule library before the live collection/artifact integration path is validated.
 
 ## Testing philosophy
 
-Collectors get offline fake-client tests first, then live lab tests. Silent omission is worse than explicit `Partial`. The current offline/cross-platform suite includes collection contracts, serializer boundaries, SYSVOL source/resource/lifecycle regressions and a synthetic CLI end-to-end artifact round trip. Future layers include clean-domain false-positive regression, planted misconfigurations, synthetic/golden snapshots, query/memory benchmarks and scanner read-only/security tests.
+Collectors get offline fake-client tests first, then live lab tests. Silent omission is worse than explicit `Partial`. The current offline/cross-platform suite includes collection contracts, serializer boundaries, SYSVOL source/resource/lifecycle regressions, production-registry planner coverage, text/binary SID normalization regressions and a synthetic CLI end-to-end artifact round trip. Future layers include clean-domain false-positive regression, planted misconfigurations, synthetic/golden snapshots, query/memory benchmarks and scanner read-only/security tests.
 
 ## New-chat instruction
 
