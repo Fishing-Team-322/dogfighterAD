@@ -163,8 +163,17 @@ public sealed class CollectionExecutor
                 planned.SelectedCapabilities.ToHashSet(StringComparer.Ordinal),
                 availableData);
 
-            var result = await collector
-                .CollectAsync(context, linkedCancellation.Token)
+            // A collector is an extension boundary and may enter blocking native code before its
+            // CollectAsync method returns a Task. Invoke it off the orchestration thread and apply
+            // the linked timeout to the returned task so synchronous pre-await blocking cannot
+            // bypass the collection timeout.
+            var collectorTask = Task.Run(
+                () => collector.CollectAsync(context, linkedCancellation.Token),
+                CancellationToken.None);
+            ObserveBackgroundFault(collectorTask);
+
+            var result = await collectorTask
+                .WaitAsync(linkedCancellation.Token)
                 .ConfigureAwait(false);
 
             // A collector may return successfully after cancellation was requested.
@@ -284,6 +293,15 @@ public sealed class CollectionExecutor
                     CompletedAt = completedAt
                 });
         }
+    }
+
+    private static void ObserveBackgroundFault(Task task)
+    {
+        _ = task.ContinueWith(
+            static completedTask => _ = completedTask.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
     }
 
     private static SnapshotFragment ValidateAndNormalizeResult(
