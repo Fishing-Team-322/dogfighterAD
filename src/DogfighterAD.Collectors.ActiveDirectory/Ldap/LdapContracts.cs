@@ -1,3 +1,4 @@
+using System.Net;
 using System.Runtime.CompilerServices;
 
 namespace DogfighterAD.Collectors.ActiveDirectory.Ldap;
@@ -121,4 +122,10 @@ public sealed record LdapClientOptions
     public int Port { get; init; } = 389;
     public bool UseLdaps { get; init; }
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Optional explicit credential for LDAP Negotiate. When null, the current operating-system
+    /// security context is used. Credential material is runtime-only and is never snapshot data.
+    /// </summary>
+    public NetworkCredential? Credential { get; init; }
 }
