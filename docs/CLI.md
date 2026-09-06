@@ -26,32 +26,35 @@ The publish path must contain both the CLI and the complete `DogfighterAD.Sysvol
 
 LDAP always uses `AuthType.Negotiate`.
 
-By default DogfighterAD uses the current operating-system security context. For a controlled lab or assessment where the scanner host is not logged on with the AD identity, `scan` also supports an explicit LDAP username with a **hidden interactive password prompt**:
+By default DogfighterAD uses the current operating-system security context. For a controlled lab or assessment where the scanner host is not logged on with the AD identity, `scan` supports an explicit LDAP username with a **hidden interactive password prompt**:
 
 ```powershell
 ./dogfighter scan `
   --target dc.mini.lab `
   --profile minimal `
   -u 'MINILAB\alice' `
-  -p `
   --output .\artifacts\mini-minimal.dogad
 ```
 
-`-u` is an alias for `--username`. `-p` is an alias for `--password`, but it is deliberately a **prompt switch**, not a password-value option. The CLI then prompts:
+`-u` is an alias for `--username`. Supplying it automatically opens the password prompt:
 
 ```text
 LDAP password for MINILAB\alice:
 ```
 
-The entered characters are not echoed. Password values such as `-p secret`, `--password secret`, `--password=secret`, or `--passwd=secret` are rejected without reproducing the supplied value in the parser error.
+The entered characters are not echoed. There is deliberately no `-p` password flag. Password options/values such as `-p`, `-p secret`, `--password secret`, `--password=secret`, or `--passwd=secret` are rejected without reproducing a following/supplied secret in the parser error.
 
 This preserves the project invariant that credential secrets must not appear in command-line arguments, process listings, artifacts or default logs. The prompted credential exists only in runtime memory and is supplied to the LDAP connection.
 
 `DOMAIN\user` and UPN-style `user@domain` names are supported. For `DOMAIN\user`, the CLI separates the domain and account name before constructing the LDAP network credential.
 
+Explicit LDAP Negotiate credentials require a **DNS hostname target**. An IP literal together with `-u` is rejected before prompting/collection. This avoids ambiguous Kerberos/NTLM fallback behavior and the live-observed case where an explicit Negotiate scan by IP did not return promptly. Use a resolvable DC FQDN (for example `dc.mini.lab`).
+
+The production LDAP connection applies the configured 30-second LDAP connection timeout as well as the existing per-request timeout. Profile-level collector timeouts remain a separate outer safety boundary.
+
 ### Important SYSVOL distinction
 
-The explicit `-u ... -p` credential currently applies to **LDAP only**. `gpo.sysvol` runs through the isolated worker and Windows filesystem/SMB APIs, so SYSVOL still uses the operating-system network security context.
+The explicit `-u` credential currently applies to **LDAP only**. `gpo.sysvol` runs through the isolated worker and Windows filesystem/SMB APIs, so SYSVOL still uses the operating-system network security context.
 
 Therefore an `audit-full` scan from a non-domain workstation needs both:
 
@@ -78,7 +81,6 @@ Minimal read-only collection using a prompted explicit LDAP credential:
   --target dc.mini.lab `
   --profile minimal `
   -u 'MINILAB\alice' `
-  -p `
   --output .\artifacts\mini-minimal-explicit-ldap.dogad
 ```
 
@@ -120,6 +122,19 @@ If a controlled environment intentionally returns another DC/authority, approve 
 
 `--sysvol-authority` is repeatable. It is not a wildcard/disable-scope switch.
 
+## Safe failure diagnostics
+
+Collector failures are still evidence-first and do not persist raw exception/server text. Known operational failures may emit a sanitized issue code/message, for example:
+
+```text
+  directory.core             Failed        items=0 issues=1
+    [Error] collection.ldap.authentication-failed: LDAP authentication failed (code=49/InvalidCredentials). Verify the supplied username/password and Negotiate prerequisites.
+```
+
+LDAP diagnostics distinguish at least authentication failure, server/connection unavailability, timeout, stronger-authentication requirements and an unknown LDAP failure. Numeric LDAP/result codes are retained when safe. Raw `LdapException`/server error text and credential material are intentionally omitted.
+
+Unknown exceptions still fall back to `collection.collector.failed` rather than serializing arbitrary exception details.
+
 ## Artifact commit behavior
 
 `scan` does not directly stream into the final filename. It:
@@ -141,7 +156,7 @@ A failed/canceled write or failed readback is not intentionally published as the
 ./dogfighter inspect --snapshot .\artifacts\mini-audit-full.dogad
 ```
 
-The default summary intentionally prints metadata, object counts and capability coverage rather than raw AD object attributes or evidence payloads.
+The summary prints metadata, object counts, capability coverage and sanitized collection issue details. It does not print raw AD source payloads or credential values.
 
 ## Exit codes
 
@@ -166,14 +181,16 @@ The CLI prints:
 - initial target;
 - artifact path;
 - counts for domains/users/groups/computers/OUs/memberships/GPOs;
-- each capability's status, observed item count and issue count.
+- each capability's status, observed item count and issue count;
+- each collection issue's severity, code and sanitized message.
 
-It does not print credential values or arbitrary source payloads on the default exception path.
+It does not print credential values or arbitrary exception/source payloads on the default error path.
 
 ## Current limitations
 
 - The MINILAB minimal profile has been validated live and completed with the corrected binary SID transport; `audit-full` validation is continuing against observed ACL/GPO/SYSVOL issues.
-- Explicit `-u ... -p` credentials currently authenticate LDAP only; SYSVOL/SMB still uses the OS network security context.
+- Explicit `-u` credentials currently authenticate LDAP only; SYSVOL/SMB still uses the OS network security context.
+- Explicit Negotiate authentication requires a hostname target; IP literals with `-u` are rejected.
 - Current collection is primarily default-domain scoped; broader forest/multi-domain work is later.
 - `inspect` is not the future `analyze` command. There is no Rule Engine yet.
 - LDAP request/page counters and peak-memory telemetry are still pending.
