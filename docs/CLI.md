@@ -10,21 +10,76 @@ dotnet build src/DogfighterAD.Cli/DogfighterAD.Cli.csproj -c Release
 
 The build also produces/copies `DogfighterAD.SysvolWorker` beside the CLI output. `audit-full` requires that worker because potentially blocking SYSVOL filesystem calls execute outside the long-lived scanner process.
 
+For a standalone Windows deployment without a preinstalled .NET runtime:
+
+```powershell
+dotnet publish src/DogfighterAD.Cli/DogfighterAD.Cli.csproj `
+  -c Release `
+  -r win-x64 `
+  --self-contained true `
+  -o C:\DogfighterBuild
+```
+
+The publish path must contain both the CLI and the complete `DogfighterAD.SysvolWorker` runtime set.
+
 ## Authentication model
 
-LDAP uses `AuthType.Negotiate` and the current operating-system security context. The CLI intentionally does **not** accept username/password/credential values as command-line options.
+LDAP always uses `AuthType.Negotiate`.
 
-Run DogfighterAD under an identity that is authorized for the assessment. How that identity is established is an operating-system/environment concern; credentials must not be placed in DogfighterAD arguments, artifacts or logs.
+By default DogfighterAD uses the current operating-system security context. For a controlled lab or assessment where the scanner host is not logged on with the AD identity, `scan` also supports an explicit LDAP username with a **hidden interactive password prompt**:
+
+```powershell
+./dogfighter scan `
+  --target dc.mini.lab `
+  --profile minimal `
+  -u 'MINILAB\alice' `
+  -p `
+  --output .\artifacts\mini-minimal.dogad
+```
+
+`-u` is an alias for `--username`. `-p` is an alias for `--password`, but it is deliberately a **prompt switch**, not a password-value option. The CLI then prompts:
+
+```text
+LDAP password for MINILAB\alice:
+```
+
+The entered characters are not echoed. Password values such as `-p secret`, `--password secret`, `--password=secret`, or `--passwd=secret` are rejected without reproducing the supplied value in the parser error.
+
+This preserves the project invariant that credential secrets must not appear in command-line arguments, process listings, artifacts or default logs. The prompted credential exists only in runtime memory and is supplied to the LDAP connection.
+
+`DOMAIN\user` and UPN-style `user@domain` names are supported. For `DOMAIN\user`, the CLI separates the domain and account name before constructing the LDAP network credential.
+
+### Important SYSVOL distinction
+
+The explicit `-u ... -p` credential currently applies to **LDAP only**. `gpo.sysvol` runs through the isolated worker and Windows filesystem/SMB APIs, so SYSVOL still uses the operating-system network security context.
+
+Therefore an `audit-full` scan from a non-domain workstation needs both:
+
+- working DNS/routing to the target domain/DC; and
+- an OS-level SMB security context authorized to read the returned `\\domain\SYSVOL\...` paths, for example a controlled `runas /netonly` session or another pre-established Windows network logon context.
+
+Explicit LDAP credentials do not repair DNS, routing or SMB authentication. A `minimal` profile can be used first to validate LDAP separately.
 
 ## `scan`
 
-Minimal read-only collection:
+Minimal read-only collection using the current OS context:
 
 ```powershell
 ./dogfighter scan `
   --target dc01.mini.lab `
   --profile minimal `
   --output .\artifacts\mini-minimal.dogad
+```
+
+Minimal read-only collection using a prompted explicit LDAP credential:
+
+```powershell
+./dogfighter scan `
+  --target dc.mini.lab `
+  --profile minimal `
+  -u 'MINILAB\alice' `
+  -p `
+  --output .\artifacts\mini-minimal-explicit-ldap.dogad
 ```
 
 Full current Collection Core:
@@ -117,10 +172,10 @@ It does not print credential values or arbitrary source payloads on the default 
 
 ## Current limitations
 
-- The CLI has cross-platform build/offline tests, but no live AD/MINILAB/GOAD result has yet been recorded in the repository.
+- The MINILAB minimal profile has been validated live and completed with the corrected binary SID transport; `audit-full` validation is continuing against observed ACL/GPO/SYSVOL issues.
+- Explicit `-u ... -p` credentials currently authenticate LDAP only; SYSVOL/SMB still uses the OS network security context.
 - Current collection is primarily default-domain scoped; broader forest/multi-domain work is later.
 - `inspect` is not the future `analyze` command. There is no Rule Engine yet.
 - LDAP request/page counters and peak-memory telemetry are still pending.
-- `audit-full` SYSVOL DFS/referral behavior needs real lab validation even though scope, byte-budget and blocked-I/O lifetime boundaries have offline regression coverage.
 
-Use `MINILAB_RUNBOOK.md` for the first live validation sequence.
+Use `MINILAB_RUNBOOK.md` for the live validation sequence.
