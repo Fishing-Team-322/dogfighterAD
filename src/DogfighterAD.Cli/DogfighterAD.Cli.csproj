@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>dogfighter</AssemblyName>
+    <RootNamespace>DogfighterAD.Cli</RootNamespace>
+    <Version>0.1.0</Version>
+    <InformationalVersion>0.1.0-dev</InformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DogfighterAD.Domain\DogfighterAD.Domain.csproj" />
+    <ProjectReference Include="..\DogfighterAD.Application\DogfighterAD.Application.csproj" />
+    <ProjectReference Include="..\DogfighterAD.Collectors.ActiveDirectory\DogfighterAD.Collectors.ActiveDirectory.csproj" />
+    <ProjectReference Include="..\DogfighterAD.Serialization\DogfighterAD.Serialization.csproj" />
+    <ProjectReference Include="..\DogfighterAD.SysvolWorker\DogfighterAD.SysvolWorker.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <Target Name="CopySysvolWorker" AfterTargets="Build">
+    <ItemGroup>
+      <SysvolWorkerFiles Include="$(MSBuildThisFileDirectory)..\DogfighterAD.SysvolWorker\bin\$(Configuration)\net10.0\DogfighterAD.SysvolWorker*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(SysvolWorkerFiles)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

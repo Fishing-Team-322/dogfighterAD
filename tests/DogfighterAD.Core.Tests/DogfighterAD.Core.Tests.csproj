@@ -16,6 +16,7 @@
     <ProjectReference Include="..\..\src\DogfighterAD.Application\DogfighterAD.Application.csproj" />
     <ProjectReference Include="..\..\src\DogfighterAD.Collectors.ActiveDirectory\DogfighterAD.Collectors.ActiveDirectory.csproj" />
     <ProjectReference Include="..\..\src\DogfighterAD.Serialization\DogfighterAD.Serialization.csproj" />
+    <ProjectReference Include="..\..\src\DogfighterAD.Cli\DogfighterAD.Cli.csproj" />
     <ProjectReference Include="..\..\src\DogfighterAD.SysvolWorker\DogfighterAD.SysvolWorker.csproj"
                       ReferenceOutputAssembly="false" />
   </ItemGroup>
