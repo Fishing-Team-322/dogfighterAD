@@ -27,15 +27,15 @@ internal static class LdapFailureClassifier
         {
             InvalidCredentialsResultCode => new CollectorOperationalException(
                 "collection.ldap.authentication-failed",
-                "LDAP authentication failed (code=49/InvalidCredentials). Verify the supplied username/password and Negotiate prerequisites.",
+                "LDAP authentication failed (code=49/InvalidCredentials). Verify the supplied username/password and authentication prerequisites.",
                 exception),
             81 or 82 or 91 => new CollectorOperationalException(
                 "collection.ldap.server-unavailable",
-                $"LDAP connection or negotiation failed (code={exception.ErrorCode}). Verify target resolution, routing, firewall and Negotiate prerequisites.",
+                $"LDAP connection or authentication setup failed (code={exception.ErrorCode}). Verify target resolution, routing, firewall and authentication prerequisites.",
                 exception),
             85 => new CollectorOperationalException(
                 "collection.ldap.timeout",
-                "LDAP connection/request timed out (code=85). Verify reachability, name resolution and authentication negotiation.",
+                "LDAP connection/request timed out (code=85). Verify reachability, name resolution and authentication prerequisites.",
                 exception),
             _ => new CollectorOperationalException(
                 "collection.ldap.failed",
@@ -60,7 +60,7 @@ internal static class LdapFailureClassifier
         {
             return new CollectorOperationalException(
                 "collection.ldap.authentication-failed",
-                "LDAP authentication failed (code=49/InvalidCredentials). Verify the supplied username/password and Negotiate prerequisites.",
+                "LDAP authentication failed (code=49/InvalidCredentials). Verify the supplied username/password and authentication prerequisites.",
                 exception);
         }
 
@@ -69,7 +69,7 @@ internal static class LdapFailureClassifier
             ResultCode.InappropriateAuthentication or ResultCode.AuthMethodNotSupported =>
                 new CollectorOperationalException(
                     "collection.ldap.authentication-failed",
-                    $"LDAP authentication was rejected (result={resultCode}, code={(int)resultCode}). Verify the supplied identity and Negotiate prerequisites.",
+                    $"LDAP authentication was rejected (result={resultCode}, code={(int)resultCode}). Verify the supplied identity and authentication prerequisites.",
                     exception),
             ResultCode.Unavailable => new CollectorOperationalException(
                 "collection.ldap.server-unavailable",
