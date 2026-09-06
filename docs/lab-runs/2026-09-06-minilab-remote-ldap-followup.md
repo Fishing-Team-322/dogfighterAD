@@ -1,6 +1,6 @@
 # MINILAB remote LDAP follow-up - 2026-09-06
 
-This note extends `2026-09-06-minilab-readiness.md` with the repeated remote-workstation explicit-credential observation. No password or credential value is recorded.
+This note extends `2026-09-06-minilab-readiness.md` with the repeated remote-workstation explicit-credential observations. No password or credential value is recorded.
 
 ## Environment already established
 
@@ -38,7 +38,7 @@ Starting collection: target=dc.mini.lab profile=minimal collector-timeout=00:02:
 
 No subsequent snapshot summary or exit code was captured in the reported run; the scanner again appeared non-returning after collection started. Therefore this run is recorded only as a **non-returning observation**. It is not evidence of an invalid password, successful authentication, or any particular LDAP server result.
 
-## Review findings
+## Review findings after the non-returning run
 
 The previous hardening isolated `Bind()` itself, but the complete Windows LDAP setup path still mixed several concerns:
 
@@ -47,17 +47,75 @@ The previous hardening isolated `Bind()` itself, but the complete Windows LDAP s
 3. the scanner only printed a scan-level start marker, so a live stall could not identify the exact collector boundary; and
 4. after an external timeout, an isolated native setup task could outlive the prompt-owned credential scope. The native task therefore must not retain the prompt-owned `SecureString` directly.
 
-The current fix makes these boundaries explicit instead of relying on implicit Negotiate/fallback and object-lifetime behavior.
+The next hardening made these boundaries explicit instead of relying on implicit Negotiate/fallback and object-lifetime behavior.
 
-## Current corrective behavior awaiting live rerun
+## Explicit NTLM + hard-boundary live result
 
-The current branch now applies these rules:
+A later fresh build used explicit `DOMAIN\user -> AuthType.Ntlm`, a 15-second native setup deadline, operation-owned credential lifetime, and per-collector progress output.
+
+Observed command shape:
+
+```powershell
+dogfighter scan `
+  --target dc.mini.lab `
+  --profile minimal `
+  -u 'MINILAB\alice' `
+  --output C:\DogfighterLab\minimal-from-workstation-auth-v4.dogad
+```
+
+Observed start/progress:
+
+```text
+Starting collection: target=dc.mini.lab profile=minimal ldap-auth=ntlm bind-timeout=00:00:15 request-timeout=00:00:30 collector-timeout=00:02:00.
+[collection] start collector=ad.ldap.rootdse timeout=00:02:00
+[collection] failed collector=ad.ldap.rootdse issue=collection.ldap.bind-timeout elapsed=00:00:15.0142585
+```
+
+Observed result:
+
+```text
+Snapshot: 87b7e118-2ec7-4559-9809-88c2ab23a926
+Status: Failed
+Exit: 3
+Objects: domains=0 users=0 groups=0 computers=0 ous=0 memberships=0 gpos=0
+```
+
+`directory.core` was `Failed` with:
+
+```text
+collection.ldap.bind-timeout
+```
+
+All minimal capabilities that depend on `directory.core` were `Blocked`. This run proves that the scanner no longer waits indefinitely and that safe live diagnostics/exit behavior work. It does **not** prove invalid credentials: no server authentication result was received before the local setup deadline.
+
+## Additional code-review finding from the v4 timeout
+
+The Windows LDAP identifier was still being created with the two-argument constructor:
+
+```text
+LdapDirectoryIdentifier(target, port)
+```
+
+That constructor leaves `FullyQualifiedDnsHostName` false. For the explicit-credential path, however, the CLI contract already requires `--target` to be the exact resolvable DC FQDN. Windows LDAP can otherwise treat a supplied host-like name as something that may require locator/name-resolution work before establishing the server session.
+
+The current correction therefore makes the explicit server intent unambiguous:
+
+- explicit credential -> `LdapDirectoryIdentifier(target, port, fullyQualifiedDnsHostName: true, connectionless: false)`;
+- current OS context keeps discovery-capable identifier semantics because `--target` may still be a domain rather than a specific DC;
+- regression coverage checks the FQDN/server and TCP identifier flags;
+- the 15-second setup deadline remains in place, so a failed correction still produces bounded evidence rather than another indefinite wait.
+
+This is a code-level defect found from the live v4 result. A fresh live rerun is required before claiming that the FQDN/server-binding correction resolves the workstation LDAP path.
+
+## Current corrective behavior awaiting the next live rerun
+
+The branch now applies these rules:
 
 - current OS security context -> `Negotiate`;
 - explicit `DOMAIN\user` -> `Ntlm` challenge/response to the explicitly named DC;
 - explicit `user@domain` -> `Negotiate`;
 - no Basic-auth fallback is introduced;
-- explicit credentials still require a DNS hostname target;
+- explicit credentials require a named DNS DC target and mark it as a fully-qualified server in `LdapDirectoryIdentifier`;
 - the complete native LDAP connection/configuration/authentication setup runs behind a 15-second external deadline;
 - LDAP requests retain a 30-second request timeout;
 - profile-level collector timeout remains the outer collection boundary;
@@ -65,19 +123,6 @@ The current branch now applies these rules:
 - each collector emits safe runtime progress (`start`, `done`, `failed`, `timeout`, `blocked`, `canceled`) containing collector ID, elapsed/timeout values and sanitized issue code only;
 - every native setup operation receives its own cloned runtime credential lease. A setup that outlives the scan does not depend on the prompt-owned `SecureString`; the cloned credential is disposed with the live LDAP client or, for a timed-out setup, when the native setup finally returns.
 
-For the exact MINILAB command using `MINILAB\alice`, the fresh build should therefore begin with lines shaped like:
+The next remote-workstation evidence required is the full fresh start/progress output, final snapshot status/counts/issues and `$LASTEXITCODE`. If the exact FQDN server-binding build still times out, the next investigation should verify the actual AD NetBIOS/UPN identity and Windows authentication evidence on the DC rather than inferring a bad password from `bind-timeout`.
 
-```text
-Starting collection: target=dc.mini.lab profile=minimal ldap-auth=ntlm bind-timeout=00:00:15 request-timeout=00:00:30 collector-timeout=00:02:00.
-[collection] start collector=ad.ldap.rootdse timeout=00:02:00
-```
-
-If native LDAP setup exceeds its 15-second deadline, the expected diagnostic shape is:
-
-```text
-[collection] failed collector=ad.ldap.rootdse issue=collection.ldap.bind-timeout elapsed=...
-```
-
-followed by the normal Failed snapshot summary and sanitized issue message. This is expected behavior to validate, not a claim that it has already been observed.
-
-A fresh live run is required before claiming that these changes fix the workstation path. The required evidence is the full start marker, the last per-collector progress line, final snapshot status/counts/issues, and `$LASTEXITCODE`. `audit-full` remains blocked on successful `minimal` plus separately validated SMB/SYSVOL name resolution and network security context.
+`audit-full` remains blocked on successful `minimal` plus separately validated SMB/SYSVOL name resolution and network security context.
