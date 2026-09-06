@@ -212,6 +212,30 @@ public sealed class CollectionExecutor
                     CompletedAt = completedAt
                 });
         }
+        catch (CollectorOperationalException exception)
+        {
+            var completedAt = _timeProvider.GetUtcNow();
+            var fragment = CreateFailureFragment(
+                planned,
+                target,
+                CapabilityStatus.Failed,
+                exception.IssueCode,
+                exception.SafeMessage,
+                startedAt,
+                completedAt);
+
+            return new CollectorExecutionResult(
+                fragment,
+                new CollectorExecutionRecord
+                {
+                    CollectorId = collector.Id,
+                    CollectorVersion = collector.Version,
+                    SelectedCapabilities = planned.SelectedCapabilities,
+                    Status = CollectorExecutionStatus.Failed,
+                    StartedAt = startedAt,
+                    CompletedAt = completedAt
+                });
+        }
         catch (CollectorContractException)
         {
             var completedAt = _timeProvider.GetUtcNow();
@@ -285,7 +309,7 @@ public sealed class CollectionExecutor
         }
 
         var returnedCapabilities = result.Fragment.Coverage
-            .Select(x => x.CapabilityId)
+            .Select(x => x.CapabilityId, StringComparer.Ordinal)
             .ToHashSet(StringComparer.Ordinal);
 
         if (planned.SelectedCapabilities.Any(capability => !returnedCapabilities.Contains(capability)))
