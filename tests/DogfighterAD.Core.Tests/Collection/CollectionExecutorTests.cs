@@ -111,6 +111,43 @@ public sealed class CollectionExecutorTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_SynchronouslyBlockingCollectorCannotBypassTimeout()
+    {
+        using var started = new ManualResetEventSlim(false);
+        using var release = new ManualResetEventSlim(false);
+        var collector = new SynchronouslyBlockingCollector(started, release);
+        var plan = CreatePlan(
+            [CollectionCapabilities.DirectoryCore],
+            [collector],
+            TimeSpan.FromMilliseconds(250));
+
+        try
+        {
+            var execution = new CollectionExecutor().ExecuteAsync(
+                plan,
+                Guid.NewGuid(),
+                "dc01.mini.lab",
+                CancellationToken.None);
+
+            Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
+            var result = await execution.WaitAsync(TimeSpan.FromSeconds(3));
+
+            var coverage = Assert.Single(result.Data.Coverage);
+            Assert.Equal(CapabilityStatus.Failed, coverage.Status);
+            Assert.Equal(
+                "collection.collector.timeout",
+                Assert.Single(coverage.Issues).Code);
+
+            var record = Assert.Single(result.Collectors);
+            Assert.Equal(CollectorExecutionStatus.TimedOut, record.Status);
+        }
+        finally
+        {
+            release.Set();
+        }
+    }
+
+    [Fact]
     public async Task ExecuteAsync_SameStageCollectorsSeeSamePriorState()
     {
         var first = new RecordingCollector(
@@ -140,14 +177,15 @@ public sealed class CollectionExecutorTests
 
     private static CollectionPlan CreatePlan(
         IEnumerable<string> requestedCapabilities,
-        IReadOnlyCollection<ICollector> collectors) =>
+        IReadOnlyCollection<ICollector> collectors,
+        TimeSpan? collectorTimeout = null) =>
         new CollectionPlanner().BuildPlan(
             new CollectionProfile
             {
                 Name = "test",
                 RequestedCapabilities = requestedCapabilities.ToHashSet(StringComparer.Ordinal),
                 MaxConcurrency = 4,
-                CollectorTimeout = TimeSpan.FromSeconds(5)
+                CollectorTimeout = collectorTimeout ?? TimeSpan.FromSeconds(5)
             },
             collectors);
 
@@ -174,6 +212,57 @@ public sealed class CollectionExecutorTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromException<CollectorResult>(_exception);
+        }
+    }
+
+    private sealed class SynchronouslyBlockingCollector : ICollector
+    {
+        private readonly ManualResetEventSlim _started;
+        private readonly ManualResetEventSlim _release;
+
+        public SynchronouslyBlockingCollector(
+            ManualResetEventSlim started,
+            ManualResetEventSlim release)
+        {
+            _started = started;
+            _release = release;
+        }
+
+        public string Id => "blocking";
+        public string Version => "test";
+        public IReadOnlySet<string> ProvidesCapabilities { get; } =
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                CollectionCapabilities.DirectoryCore
+            };
+        public IReadOnlySet<string> RequiresCapabilities { get; } =
+            new HashSet<string>(StringComparer.Ordinal);
+
+        public Task<CollectorResult> CollectAsync(
+            CollectionContext context,
+            CancellationToken cancellationToken)
+        {
+            _started.Set();
+            _release.Wait();
+
+            var now = DateTimeOffset.UtcNow;
+            return Task.FromResult(new CollectorResult(
+                Id,
+                Version,
+                new SnapshotFragment
+                {
+                    Coverage =
+                    [
+                        new CapabilityCoverage
+                        {
+                            CapabilityId = CollectionCapabilities.DirectoryCore,
+                            Status = CapabilityStatus.Complete,
+                            StartedAt = now,
+                            CompletedAt = now,
+                            ObservedItemCount = 1
+                        }
+                    ]
+                }));
         }
     }
 
