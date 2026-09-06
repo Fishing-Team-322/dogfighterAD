@@ -119,6 +119,31 @@ public sealed class BoundaryRegressionTests
     }
 
     [Fact]
+    public async Task SysvolRead_StopsAtMaxPlusOneWhenStreamLengthUnderreports()
+    {
+        var token = TestContext.Current.CancellationToken;
+        using var stream = new UnderreportedLengthStream(new byte[128], reportedLength: 16);
+
+        await Assert.ThrowsAsync<SysvolFileTooLargeException>(() =>
+            SysvolBoundedReader.ReadAsync(stream, "synthetic", 16, token));
+
+        Assert.Equal(17, stream.BytesRead);
+    }
+
+    [Fact]
+    public async Task SysvolRead_ObservesCancellationBeforeStreaming()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        using var stream = new UnderreportedLengthStream(new byte[1], reportedLength: 1);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            SysvolBoundedReader.ReadAsync(stream, "synthetic", 16, cts.Token));
+
+        Assert.Equal(0, stream.BytesRead);
+    }
+
+    [Fact]
     public async Task Collector_ReturningAfterCancellation_IsTimedOut()
     {
         var token = TestContext.Current.CancellationToken;
@@ -166,5 +191,73 @@ public sealed class BoundaryRegressionTests
                 StartedAt = now, CompletedAt = now, ObservedItemCount = 0
             }] });
         }
+    }
+
+    private sealed class UnderreportedLengthStream : Stream
+    {
+        private readonly byte[] _content;
+        private readonly long _reportedLength;
+        private int _position;
+
+        public UnderreportedLengthStream(byte[] content, long reportedLength)
+        {
+            _content = content;
+            _reportedLength = reportedLength;
+        }
+
+        public int BytesRead => _position;
+        public override bool CanRead => true;
+        public override bool CanSeek => true;
+        public override bool CanWrite => false;
+        public override long Length => _reportedLength;
+        public override long Position
+        {
+            get => _position;
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var remaining = _content.Length - _position;
+            if (remaining <= 0)
+            {
+                return 0;
+            }
+
+            var read = Math.Min(count, remaining);
+            _content.AsSpan(_position, read).CopyTo(buffer.AsSpan(offset, read));
+            _position += read;
+            return read;
+        }
+
+        public override ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var remaining = _content.Length - _position;
+            if (remaining <= 0)
+            {
+                return ValueTask.FromResult(0);
+            }
+
+            var read = Math.Min(buffer.Length, remaining);
+            _content.AsMemory(_position, read).CopyTo(buffer);
+            _position += read;
+            return ValueTask.FromResult(read);
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) =>
+            throw new NotSupportedException();
+
+        public override void SetLength(long value) =>
+            throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
     }
 }

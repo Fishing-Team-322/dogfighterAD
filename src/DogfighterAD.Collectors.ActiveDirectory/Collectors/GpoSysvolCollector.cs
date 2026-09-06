@@ -44,6 +44,14 @@ public sealed class GpoSysvolCollector : ICollector
         {
             throw new ArgumentOutOfRangeException(nameof(options), "SYSVOL limits must be positive.");
         }
+
+        if (_options.ApprovedAuthorities is null ||
+            _options.ApprovedAuthorities.Any(authority => !SysvolPathPolicy.IsValidAuthority(authority)))
+        {
+            throw new ArgumentException(
+                "Approved SYSVOL authorities must be simple host/domain names without path or port components.",
+                nameof(options));
+        }
     }
 
     public string Id => CollectorId;
@@ -62,161 +70,195 @@ public sealed class GpoSysvolCollector : ICollector
         var settings = new List<AdGpoSetting>();
         var observations = new List<ObservedFact>();
         var issues = new List<CollectionIssue>();
+        IReadOnlySysvolClient? client = null;
 
-        await using var client = await _clientFactory
-            .CreateAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        foreach (var gpo in context.AvailableData.Content.GroupPolicyObjects
-                     .OrderBy(item => item.GpoGuid))
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (string.IsNullOrWhiteSpace(gpo.FileSystemPath))
+            foreach (var gpo in context.AvailableData.Content.GroupPolicyObjects
+                         .OrderBy(item => item.GpoGuid))
             {
-                issues.Add(Issue(
-                    "collection.gpo.sysvol.path-missing",
-                    $"GPO {gpo.GpoGuid:D} has no gPCFileSysPath and cannot be read from SYSVOL.",
-                    context.Target));
-                continue;
-            }
+                cancellationToken.ThrowIfCancellationRequested();
 
-            try
-            {
-                var count = 0;
-                await foreach (var file in client.EnumerateFilesAsync(gpo.FileSystemPath, cancellationToken))
+                if (string.IsNullOrWhiteSpace(gpo.FileSystemPath))
                 {
-                    count++;
-                    if (count > _options.MaxFilesPerGpo)
-                    {
-                        issues.Add(Issue(
-                            "collection.gpo.sysvol.file-count-limit",
-                            $"GPO {gpo.GpoGuid:D} exceeded the {_options.MaxFilesPerGpo} file inventory limit.",
-                            context.Target));
-                        break;
-                    }
+                    issues.Add(Issue(
+                        "collection.gpo.sysvol.path-missing",
+                        $"GPO {gpo.GpoGuid:D} has no gPCFileSysPath and cannot be read from SYSVOL.",
+                        context.Target));
+                    continue;
+                }
 
-                    var relativePath = NormalizeRelativePath(file.RelativePath);
-                    var kind = Classify(relativePath);
-                    byte[] content;
+                if (!SysvolPathPolicy.TryValidateGpoRoot(
+                        gpo.FileSystemPath,
+                        gpo.DistinguishedName,
+                        gpo.GpoGuid,
+                        context.Target,
+                        _options.ApprovedAuthorities,
+                        out var sysvolScope))
+                {
+                    issues.Add(Issue(
+                        "collection.gpo.sysvol.path-out-of-scope",
+                        $"GPO {gpo.GpoGuid:D} gPCFileSysPath is outside the approved SYSVOL scope.",
+                        context.Target));
+                    continue;
+                }
 
-                    try
+                client ??= await _clientFactory
+                    .CreateAsync(cancellationToken)
+                    .ConfigureAwait(false);
+
+                try
+                {
+                    var count = 0;
+                    await foreach (var file in client.EnumerateFilesAsync(sysvolScope.RootPath, cancellationToken))
                     {
-                        content = await client
-                            .ReadFileAsync(file.FullPath, _options.MaxFileBytes, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-                    catch (SysvolFileTooLargeException)
-                    {
+                        count++;
+                        if (count > _options.MaxFilesPerGpo)
+                        {
+                            issues.Add(Issue(
+                                "collection.gpo.sysvol.file-count-limit",
+                                $"GPO {gpo.GpoGuid:D} exceeded the {_options.MaxFilesPerGpo} file inventory limit.",
+                                context.Target));
+                            break;
+                        }
+
+                        if (!SysvolPathPolicy.TryValidateFile(sysvolScope, file, out var relativePath))
+                        {
+                            issues.Add(Issue(
+                                "collection.gpo.sysvol.file-out-of-scope",
+                                $"GPO {gpo.GpoGuid:D} enumeration returned a file outside the approved policy root.",
+                                context.Target));
+                            continue;
+                        }
+
+                        var kind = Classify(relativePath);
+                        byte[] content;
+
+                        try
+                        {
+                            content = await client
+                                .ReadFileAsync(file.FullPath, _options.MaxFileBytes, cancellationToken)
+                                .ConfigureAwait(false);
+                        }
+                        catch (SysvolFileTooLargeException)
+                        {
+                            files.Add(new AdGpoSysvolFile
+                            {
+                                GpoId = gpo.Id,
+                                RelativePath = relativePath,
+                                Length = file.Length,
+                                LastWriteTimeUtc = file.LastWriteTimeUtc,
+                                Kind = kind
+                            });
+                            issues.Add(Issue(
+                                "collection.gpo.sysvol.file-too-large",
+                                $"GPO {gpo.GpoGuid:D} file '{relativePath}' exceeds the {_options.MaxFileBytes} byte read limit.",
+                                context.Target));
+                            continue;
+                        }
+                        catch (IOException exception)
+                        {
+                            issues.Add(Issue(
+                                "collection.gpo.sysvol.file-read-failed",
+                                $"GPO {gpo.GpoGuid:D} file '{relativePath}' could not be read: {exception.GetType().Name}.",
+                                context.Target));
+                            continue;
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            issues.Add(Issue(
+                                "collection.gpo.sysvol.file-access-denied",
+                                $"Access to GPO {gpo.GpoGuid:D} file '{relativePath}' was denied.",
+                                context.Target));
+                            continue;
+                        }
+
+                        var hash = Convert.ToHexStringLower(SHA256.HashData(content));
                         files.Add(new AdGpoSysvolFile
                         {
                             GpoId = gpo.Id,
                             RelativePath = relativePath,
-                            Length = file.Length,
+                            Length = content.LongLength,
+                            Sha256 = hash,
                             LastWriteTimeUtc = file.LastWriteTimeUtc,
                             Kind = kind
                         });
-                        issues.Add(Issue(
-                            "collection.gpo.sysvol.file-too-large",
-                            $"GPO {gpo.GpoGuid:D} file '{relativePath}' exceeds the {_options.MaxFileBytes} byte read limit.",
-                            context.Target));
-                        continue;
-                    }
-                    catch (IOException exception)
-                    {
-                        issues.Add(Issue(
-                            "collection.gpo.sysvol.file-read-failed",
-                            $"GPO {gpo.GpoGuid:D} file '{relativePath}' could not be read: {exception.GetType().Name}.",
-                            context.Target));
-                        continue;
-                    }
-                    catch (UnauthorizedAccessException)
-                    {
-                        issues.Add(Issue(
-                            "collection.gpo.sysvol.file-access-denied",
-                            $"Access to GPO {gpo.GpoGuid:D} file '{relativePath}' was denied.",
-                            context.Target));
-                        continue;
-                    }
 
-                    var hash = Convert.ToHexStringLower(SHA256.HashData(content));
-                    files.Add(new AdGpoSysvolFile
-                    {
-                        GpoId = gpo.Id,
-                        RelativePath = relativePath,
-                        Length = content.LongLength,
-                        Sha256 = hash,
-                        LastWriteTimeUtc = file.LastWriteTimeUtc,
-                        Kind = kind
-                    });
-
-                    AddFileFacts(
-                        observations,
-                        gpo,
-                        relativePath,
-                        content.LongLength,
-                        hash,
-                        context.Target,
-                        file.FullPath,
-                        _timeProvider.GetUtcNow());
-
-                    var parsed = ParseSupportedFile(kind, relativePath, content);
-                    if (!parsed.Success)
-                    {
-                        issues.Add(Issue(
-                            "collection.gpo.sysvol.parse-failed",
-                            $"GPO {gpo.GpoGuid:D} file '{relativePath}' could not be normalized: {parsed.Error}",
-                            context.Target));
-                        continue;
-                    }
-
-                    foreach (var parsedSetting in parsed.Settings)
-                    {
-                        var setting = new AdGpoSetting
-                        {
-                            GpoId = gpo.Id,
-                            Scope = parsedSetting.Scope,
-                            SourceRelativePath = parsedSetting.SourceRelativePath,
-                            Sequence = parsedSetting.Sequence,
-                            Kind = parsedSetting.Kind,
-                            Section = parsedSetting.Section,
-                            Key = parsedSetting.Key,
-                            Value = parsedSetting.Value,
-                            ValueKind = parsedSetting.ValueKind,
-                            Disposition = parsedSetting.Disposition,
-                            DataLength = parsedSetting.DataLength
-                        };
-                        settings.Add(setting);
-                        AddSettingFact(
+                        AddFileFacts(
                             observations,
                             gpo,
-                            setting,
+                            relativePath,
+                            content.LongLength,
+                            hash,
                             context.Target,
                             file.FullPath,
                             _timeProvider.GetUtcNow());
+
+                        var parsed = ParseSupportedFile(kind, relativePath, content);
+                        if (!parsed.Success)
+                        {
+                            issues.Add(Issue(
+                                "collection.gpo.sysvol.parse-failed",
+                                $"GPO {gpo.GpoGuid:D} file '{relativePath}' could not be normalized: {parsed.Error}",
+                                context.Target));
+                            continue;
+                        }
+
+                        foreach (var parsedSetting in parsed.Settings)
+                        {
+                            var setting = new AdGpoSetting
+                            {
+                                GpoId = gpo.Id,
+                                Scope = parsedSetting.Scope,
+                                SourceRelativePath = parsedSetting.SourceRelativePath,
+                                Sequence = parsedSetting.Sequence,
+                                Kind = parsedSetting.Kind,
+                                Section = parsedSetting.Section,
+                                Key = parsedSetting.Key,
+                                Value = parsedSetting.Value,
+                                ValueKind = parsedSetting.ValueKind,
+                                Disposition = parsedSetting.Disposition,
+                                DataLength = parsedSetting.DataLength
+                            };
+                            settings.Add(setting);
+                            AddSettingFact(
+                                observations,
+                                gpo,
+                                setting,
+                                context.Target,
+                                file.FullPath,
+                                _timeProvider.GetUtcNow());
+                        }
                     }
                 }
+                catch (DirectoryNotFoundException)
+                {
+                    issues.Add(Issue(
+                        "collection.gpo.sysvol.directory-not-found",
+                        $"SYSVOL directory for GPO {gpo.GpoGuid:D} was not found.",
+                        context.Target));
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    issues.Add(Issue(
+                        "collection.gpo.sysvol.directory-access-denied",
+                        $"Access to the SYSVOL directory for GPO {gpo.GpoGuid:D} was denied.",
+                        context.Target));
+                }
+                catch (IOException exception)
+                {
+                    issues.Add(Issue(
+                        "collection.gpo.sysvol.enumeration-failed",
+                        $"SYSVOL enumeration for GPO {gpo.GpoGuid:D} failed: {exception.GetType().Name}.",
+                        context.Target));
+                }
             }
-            catch (DirectoryNotFoundException)
+        }
+        finally
+        {
+            if (client is not null)
             {
-                issues.Add(Issue(
-                    "collection.gpo.sysvol.directory-not-found",
-                    $"SYSVOL directory for GPO {gpo.GpoGuid:D} was not found.",
-                    context.Target));
-            }
-            catch (UnauthorizedAccessException)
-            {
-                issues.Add(Issue(
-                    "collection.gpo.sysvol.directory-access-denied",
-                    $"Access to the SYSVOL directory for GPO {gpo.GpoGuid:D} was denied.",
-                    context.Target));
-            }
-            catch (IOException exception)
-            {
-                issues.Add(Issue(
-                    "collection.gpo.sysvol.enumeration-failed",
-                    $"SYSVOL enumeration for GPO {gpo.GpoGuid:D} failed: {exception.GetType().Name}.",
-                    context.Target));
+                await client.DisposeAsync().ConfigureAwait(false);
             }
         }
 
@@ -310,9 +352,6 @@ public sealed class GpoSysvolCollector : ICollector
 
         return GpoSysvolFileKind.Other;
     }
-
-    private static string NormalizeRelativePath(string value) =>
-        value.Replace('/', '\\').TrimStart('\\');
 
     private static void AddFileFacts(
         ICollection<ObservedFact> facts,

@@ -100,6 +100,118 @@ public sealed class GpoSysvolCollectorTests
         Assert.Equal(128, file.Length);
     }
 
+    [Theory]
+    [InlineData("C:\\temp\\Policies\\{66666666-6666-6666-6666-666666666666}")]
+    [InlineData("\\\\evil.example\\SYSVOL\\mini.lab\\Policies\\{66666666-6666-6666-6666-666666666666}")]
+    [InlineData("\\\\mini.lab\\C$\\mini.lab\\Policies\\{66666666-6666-6666-6666-666666666666}")]
+    [InlineData("\\\\mini.lab\\SYSVOL\\other.lab\\Policies\\{66666666-6666-6666-6666-666666666666}")]
+    [InlineData("\\\\mini.lab\\SYSVOL\\mini.lab\\Policies\\{66666666-6666-6666-6666-666666666666}\\..\\escape")]
+    public async Task CollectAsync_RejectsOutOfScopeRootBeforeClientCreation(string root)
+    {
+        var gpoObjectId = new AdObjectId(Guid.Parse("55555555-5555-5555-5555-555555555555"));
+        var gpoGuid = Guid.Parse("66666666-6666-6666-6666-666666666666");
+        var factory = new RecordingSysvolClientFactory(new EmptySysvolClient());
+        var collector = new GpoSysvolCollector(
+            factory,
+            new SysvolClientOptions { MaxFileBytes = 1024, MaxFilesPerGpo = 100 },
+            new FixedTimeProvider(FixedNow));
+
+        var result = await collector.CollectAsync(
+            CreateContext(gpoObjectId, gpoGuid, root),
+            CancellationToken.None);
+
+        Assert.Equal(0, factory.CreateCalls);
+        var coverage = Assert.Single(result.Fragment.Coverage);
+        Assert.Equal(CapabilityStatus.Partial, coverage.Status);
+        Assert.Contains(coverage.Issues, issue =>
+            issue.Code == "collection.gpo.sysvol.path-out-of-scope");
+        Assert.Empty(result.Fragment.Content.GroupPolicyFiles);
+    }
+
+    [Fact]
+    public async Task CollectAsync_AllowsCurrentTargetDcAsSysvolAuthority()
+    {
+        var gpoObjectId = new AdObjectId(Guid.Parse("77777777-7777-7777-7777-777777777777"));
+        var gpoGuid = Guid.Parse("88888888-8888-8888-8888-888888888888");
+        const string root = "\\\\dc01.mini.lab\\SYSVOL\\mini.lab\\Policies\\{88888888-8888-8888-8888-888888888888}";
+        var client = new FakeSysvolClient(
+            root,
+            new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["GPT.INI"] = Encoding.UTF8.GetBytes("[General]\r\nVersion=1\r\n")
+            });
+        var collector = new GpoSysvolCollector(
+            new FakeSysvolClientFactory(client),
+            new SysvolClientOptions { MaxFileBytes = 1024, MaxFilesPerGpo = 100 },
+            new FixedTimeProvider(FixedNow));
+
+        var result = await collector.CollectAsync(
+            CreateContext(gpoObjectId, gpoGuid, root),
+            CancellationToken.None);
+
+        Assert.Equal(CapabilityStatus.Complete, Assert.Single(result.Fragment.Coverage).Status);
+        Assert.Single(result.Fragment.Content.GroupPolicyFiles);
+    }
+
+    [Fact]
+    public async Task CollectAsync_AllowsExplicitlyApprovedAlternateDc()
+    {
+        var gpoObjectId = new AdObjectId(Guid.Parse("99999999-9999-9999-9999-999999999999"));
+        var gpoGuid = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        const string root = "\\\\dc02.mini.lab\\SYSVOL\\mini.lab\\Policies\\{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}";
+        var client = new FakeSysvolClient(
+            root,
+            new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["GPT.INI"] = Encoding.UTF8.GetBytes("[General]\r\nVersion=1\r\n")
+            });
+        var collector = new GpoSysvolCollector(
+            new FakeSysvolClientFactory(client),
+            new SysvolClientOptions
+            {
+                MaxFileBytes = 1024,
+                MaxFilesPerGpo = 100,
+                ApprovedAuthorities = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    "dc02.mini.lab"
+                }
+            },
+            new FixedTimeProvider(FixedNow));
+
+        var result = await collector.CollectAsync(
+            CreateContext(gpoObjectId, gpoGuid, root),
+            CancellationToken.None);
+
+        Assert.Equal(CapabilityStatus.Complete, Assert.Single(result.Fragment.Coverage).Status);
+        Assert.Single(result.Fragment.Content.GroupPolicyFiles);
+    }
+
+    [Fact]
+    public async Task CollectAsync_RejectsEnumeratedChildOutsideApprovedScopeBeforeRead()
+    {
+        var gpoObjectId = new AdObjectId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"));
+        var gpoGuid = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+        const string root = "\\\\mini.lab\\SYSVOL\\mini.lab\\Policies\\{cccccccc-cccc-cccc-cccc-cccccccccccc}";
+        var client = new EscapingSysvolClient(root, gpoGuid);
+        var factory = new RecordingSysvolClientFactory(client);
+        var collector = new GpoSysvolCollector(
+            factory,
+            new SysvolClientOptions { MaxFileBytes = 1024, MaxFilesPerGpo = 100 },
+            new FixedTimeProvider(FixedNow));
+
+        var result = await collector.CollectAsync(
+            CreateContext(gpoObjectId, gpoGuid, root),
+            CancellationToken.None);
+
+        Assert.Equal(1, factory.CreateCalls);
+        Assert.Equal(0, client.ReadCalls);
+        var coverage = Assert.Single(result.Fragment.Coverage);
+        Assert.Equal(CapabilityStatus.Partial, coverage.Status);
+        Assert.Contains(coverage.Issues, issue =>
+            issue.Code == "collection.gpo.sysvol.file-out-of-scope");
+        Assert.Empty(result.Fragment.Content.GroupPolicyFiles);
+    }
+
     [Fact]
     public void RegistryPolicyParser_StringDataIsMetadataOnly()
     {
@@ -221,6 +333,86 @@ public sealed class GpoSysvolCollectorTests
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(_client);
         }
+    }
+
+    private sealed class RecordingSysvolClientFactory : IReadOnlySysvolClientFactory
+    {
+        private readonly IReadOnlySysvolClient _client;
+
+        public RecordingSysvolClientFactory(IReadOnlySysvolClient client)
+        {
+            _client = client;
+        }
+
+        public int CreateCalls { get; private set; }
+
+        public ValueTask<IReadOnlySysvolClient> CreateAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            CreateCalls++;
+            return ValueTask.FromResult(_client);
+        }
+    }
+
+    private sealed class EmptySysvolClient : IReadOnlySysvolClient
+    {
+        public async IAsyncEnumerable<SysvolFileEntry> EnumerateFilesAsync(
+            string rootPath,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.CompletedTask;
+            yield break;
+        }
+
+        public Task<byte[]> ReadFileAsync(
+            string fullPath,
+            int maxBytes,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Read should not be reached.");
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class EscapingSysvolClient : IReadOnlySysvolClient
+    {
+        private readonly string _root;
+        private readonly Guid _gpoGuid;
+
+        public EscapingSysvolClient(string root, Guid gpoGuid)
+        {
+            _root = root;
+            _gpoGuid = gpoGuid;
+        }
+
+        public int ReadCalls { get; private set; }
+
+        public async IAsyncEnumerable<SysvolFileEntry> EnumerateFilesAsync(
+            string rootPath,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            Assert.Equal(_root, rootPath);
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return new SysvolFileEntry
+            {
+                FullPath = $"\\\\evil.example\\SYSVOL\\mini.lab\\Policies\\{_gpoGuid:B}\\GPT.INI",
+                RelativePath = "GPT.INI",
+                Length = 4,
+                LastWriteTimeUtc = FixedNow
+            };
+            await Task.Yield();
+        }
+
+        public Task<byte[]> ReadFileAsync(
+            string fullPath,
+            int maxBytes,
+            CancellationToken cancellationToken)
+        {
+            ReadCalls++;
+            throw new InvalidOperationException("Out-of-scope child must not be read.");
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private sealed class FakeSysvolClient : IReadOnlySysvolClient
