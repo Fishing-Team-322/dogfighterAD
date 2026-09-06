@@ -113,6 +113,7 @@ public sealed class CollectionExecutorTests
     [Fact]
     public async Task ExecuteAsync_SynchronouslyBlockingCollectorCannotBypassTimeout()
     {
+        var token = TestContext.Current.CancellationToken;
         using var started = new ManualResetEventSlim(false);
         using var release = new ManualResetEventSlim(false);
         var collector = new SynchronouslyBlockingCollector(started, release);
@@ -127,10 +128,10 @@ public sealed class CollectionExecutorTests
                 plan,
                 Guid.NewGuid(),
                 "dc01.mini.lab",
-                CancellationToken.None);
+                token);
 
-            Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
-            var result = await execution.WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.True(started.Wait(TimeSpan.FromSeconds(2), token));
+            var result = await execution.WaitAsync(TimeSpan.FromSeconds(3), token);
 
             var coverage = Assert.Single(result.Data.Coverage);
             Assert.Equal(CapabilityStatus.Failed, coverage.Status);
