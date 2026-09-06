@@ -107,4 +107,14 @@ The worker boundary is intentionally a lifecycle boundary, not a privilege sandb
 
 GitHub Actions run `34014520656` for commit `0e2490b3c2a0dd42f80b399c5c4de24ce57c7854` passed build and unit tests on both Ubuntu and Windows. The suite contained 111 tests with no failures or skips. A controlled worker fixture intentionally blocks an operation, verifies the deadline/termination path and then verifies that the same client can perform a normal operation through a restarted worker.
 
-These results do **not** establish live AD/SMB/DFS correctness. The next evidence required is a runnable CLI/composition path followed by `minimal` and `audit-full -> AdSnapshot -> .dogad -> offline read` against MINILAB/GOAD, including real referral/inaccessible-share behavior, exact fixture/build recording and resource/query measurements.
+### CLI composition follow-up
+
+Commit `76034c859d4798fef551865d9ad36f72e1ca2da8` added a thin `DogfighterAD.Cli` host with `scan` and offline `inspect`.
+
+The CLI selects the existing built-in profile/collectors and invokes planner -> executor -> snapshot assembly -> `.dogad` serialization. `scan` writes a temporary artifact, reads it back through the strict `DogadArtifactSerializer` path, checks snapshot identity/status, and only then replaces the requested final output. `inspect` opens only the supplied artifact. Production LDAP composition uses Negotiate/current operating-system security context; password/user command-line options are intentionally rejected.
+
+GitHub Actions run `34014916366` passed build and tests on both Ubuntu and Windows. The Ubuntu execution reported 120 tests with zero errors, failures or skips. A synthetic no-network CLI test exercises the full composition/artifact round trip without claiming live AD correctness.
+
+`docs/CLI.md`, `docs/MINILAB_RUNBOOK.md` and `docs/lab-runs/TEMPLATE.md` define the next validation step and how to record it reproducibly.
+
+These results still do **not** establish live AD/SMB/DFS correctness. The next required evidence is an actual `minimal`, then `audit-full` MINILAB run using the exact tested commit, expected-vs-actual object/member/GPO/ACL/SYSVOL counts, explicit coverage/issues, offline `inspect` readback and controlled partial/failure cases. Only after those discrepancies are understood should GOAD/resource telemetry and then Rule Engine work proceed.

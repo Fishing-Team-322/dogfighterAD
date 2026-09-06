@@ -21,8 +21,11 @@ This document tracks what is actually implemented in the repository. An item is 
 - [x] Hard lifecycle/deadline boundary for blocking SYSVOL filesystem operations via a disposable helper process with forced termination/restart.
 - [x] Portable deterministic `.dogad` artifact serializer/reader in a separate module.
 - [x] `.dogad` manifest/payload integrity checks, canonical representation checks and strict v1 entry allowlist.
+- [x] Thin read-only CLI composition layer with `scan` and offline `inspect`.
+- [x] Verified artifact publication: temporary write -> strict `.dogad` readback -> final replace.
+- [x] CLI credential-argument rejection, Ctrl+C cancellation and structured completion exit codes.
 - [x] GitHub Actions build/test pipeline and core unit-test suite.
-- [x] Living architecture/capability/profile/format/handoff documentation.
+- [x] Living architecture/capability/profile/format/CLI/handoff documentation.
 
 ## Collection Core v1
 
@@ -40,9 +43,10 @@ This document tracks what is actually implemented in the repository. An item is 
 - [x] `minimal` / `audit-full` profiles; `audit-full` deliberately includes `gpo.sysvol`.
 - [x] Deterministic portable `.dogad v1` artifact.
 - [x] SHA-256 payload integrity metadata and strict artifact reader.
+- [x] Runnable composition path from profile -> collectors -> `AdSnapshot` -> `.dogad` -> offline readback in synthetic tests.
 - [ ] LDAP request/page counting and per-capability query budgets.
 - [ ] Peak-memory/resource telemetry and benchmark-derived thresholds.
-- [ ] Live end-to-end integration harness against MINILAB/GOAD.
+- [ ] Live end-to-end validation against MINILAB/GOAD.
 - [ ] Better partial-result accounting based on real referral/inaccessible-NC/SYSVOL failure fixtures.
 
 ## Collection Core v1.1
@@ -67,11 +71,12 @@ This document tracks what is actually implemented in the repository. An item is 
 
 ## Audit workflow
 
-- [ ] CLI `scan` producing `.dogad`.
-- [ ] Offline `analyze` loading `.dogad` without reconnecting to AD.
+- [x] CLI `scan` producing a verified `.dogad` artifact.
+- [x] Offline `inspect` loading `.dogad` without reconnecting to AD and showing coverage/count summary.
+- [ ] Offline `analyze` loading `.dogad` without reconnecting to AD; blocked on Rule Engine.
 - [ ] Snapshot diff / retest workflow.
 - [ ] JSON export and HTML audit report.
-- [ ] Machine-readable coverage report.
+- [ ] Machine-readable coverage report beyond the current console summary.
 - [ ] Suppression / accepted-risk model with audit trail.
 
 ## Later product layers
@@ -93,20 +98,22 @@ This document tracks what is actually implemented in the repository. An item is 
 
 ## Immediate next stopping-point tasks
 
-0. Build the first runnable composition path: CLI `scan` with target/profile/output, explicit SYSVOL authority scope, running-identity authentication, cancellation, structured exit statuses and coverage summary. Do not accept passwords as command-line arguments.
-1. Use the CLI/harness for `minimal`, then `audit-full -> AdSnapshot -> .dogad -> offline read` against MINILAB/GOAD. Record exact build/fixture state and compare known object/member/GPO counts.
-2. Instrument LDAP request/page counts and measure query volume, duration and peak memory on lab sizes before setting budgets.
-3. Harden partial/referral/inaccessible SYSVOL and LDAP behavior from real lab fixtures.
-4. Then implement the Rule Engine with capability-version prerequisites, stable finding fingerprints, evidence references, deterministic results and `NotVerified` semantics.
+0. Execute and record the first MINILAB validation using `docs/MINILAB_RUNBOOK.md`: `minimal` first, then `audit-full`, with exact commit SHA, lab fixture state, expected/actual counts, coverage statuses and offline `inspect` readback. Store the record under `docs/lab-runs/` using the template; do not commit real/customer `.dogad` artifacts.
+1. Fix/harden any collector, referral, inaccessible LDAP/SYSVOL or partial-coverage differences observed in the real lab. Incomplete data must remain explicit.
+2. After the live path is understood, instrument LDAP request/page counts and measure query volume, duration and peak memory before setting budgets.
+3. Repeat the same validated workflow on the fuller GOAD fixture.
+4. Then implement the Rule Engine with capability-version prerequisites, stable finding fingerprints, evidence references, deterministic results and explicit `NotVerified` semantics.
 5. Build the first high-value auditor rule pack, then diff/retest, JSON/HTML reporting and graph projection.
 
-SYSVOL scope, bounded streaming and blocking-I/O lifecycle blockers from the 2026-09-06 foundation review are now closed in the offline/cross-platform regression layer. The latest worker isolation verification is commit `0e2490b3c2a0dd42f80b399c5c4de24ce57c7854`; CI run `34014520656` passed on Linux and Windows with 111 tests. Real AD/DFS behavior remains a live integration question, not an offline-test claim.
+The CLI composition landed in commit `76034c859d4798fef551865d9ad36f72e1ca2da8`. CI run `34014916366` passed on Linux and Windows; the Linux execution reported 120 tests with no errors, failures or skips. This proves the synthetic/offline composition and artifact round trip, **not** live AD correctness.
+
+SYSVOL scope, bounded streaming and blocking-I/O lifecycle blockers from the 2026-09-06 foundation review are closed in the offline/cross-platform regression layer. Real AD/SMB/DFS semantics remain live integration questions.
 
 ## Quality gates before first auditor-facing build
 
 1. Clean and intentionally vulnerable AD fixtures exist.
 2. Collection failures cannot silently become negative findings.
-3. `.dogad` is reproducible, integrity-checked and can be analyzed offline.
+3. `.dogad` is reproducible, integrity-checked and can be consumed offline.
 4. Core collectors have live lab integration coverage.
 5. Planted misconfigurations have expected findings plus clean-state false-positive regressions.
 6. Collection time, LDAP query/page count and peak memory are measured on multiple directory sizes.

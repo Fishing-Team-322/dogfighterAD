@@ -1,6 +1,6 @@
 # Development guide
 
-This guide exists to keep DogfighterAD extensible as the number of collectors and rules grows.
+This guide exists to keep DogfighterAD extensible as the number of collectors, frontends and rules grows.
 
 ## Before adding code
 
@@ -9,6 +9,8 @@ Ask which layer owns the behavior:
 - protocol/network collection -> `DogfighterAD.Collectors.*`;
 - orchestration/planning -> `DogfighterAD.Application`;
 - canonical assessment data -> `DogfighterAD.Domain`;
+- portable artifact encoding/validation -> `DogfighterAD.Serialization`;
+- process composition/console UX -> `DogfighterAD.Cli`;
 - reporting/storage/UI -> separate modules later.
 
 Do not bypass these boundaries for convenience.
@@ -49,7 +51,7 @@ Production SYSVOL collection has two separate safety boundaries and both must re
 
 The parent/worker protocol should remain private, bounded and diagnostic-safe: bounded frame sizes, bounded file content, generic error codes, no raw filesystem exception/source text crossing into persisted collection issues. On timeout or caller cancellation the parent terminates the worker process tree and waits for cleanup before releasing the operation slot. A later operation may start a fresh worker.
 
-Hosts using `SystemSysvolClientFactory` must deploy `DogfighterAD.SysvolWorker` beside the host executable or explicitly supply the worker executable path. Tests build/copy the worker so the process boundary is exercised on Windows and Linux. See ADR `0011-isolate-blocking-sysvol-filesystem-io.md`.
+Hosts using `SystemSysvolClientFactory` must deploy `DogfighterAD.SysvolWorker` beside the host executable or explicitly supply the worker executable path. The CLI/test projects build and copy the worker so the process boundary is exercised on Windows and Linux. See ADR `0011-isolate-blocking-sysvol-filesystem-io.md`.
 
 ### Capability contract versions
 
@@ -60,6 +62,35 @@ Increment the capability contract version when a newer rule needs to distinguish
 A version increase must preserve older guarantees. If semantics are incompatible, create a new capability ID.
 
 Never use collector version as a substitute for capability contract version: collectors can be refactored without changing the data contract.
+
+## CLI / composition rules
+
+`DogfighterAD.Cli` is intentionally thin. It may:
+
+- parse process arguments;
+- choose stable built-in collection profiles;
+- configure production collector factories/transports;
+- invoke planner/executor/snapshot assembly/serialization;
+- control Ctrl+C cancellation and process exit codes;
+- print bounded metadata/coverage summaries;
+- open an existing `.dogad` for offline inspection.
+
+It must **not**:
+
+- contain AD detection semantics or duplicate a collector parser;
+- make direct LDAP/SYSVOL queries that bypass collectors;
+- reinterpret `Partial`/`Failed` as success;
+- accept passwords/credential material in command-line arguments;
+- print raw source payloads or credentials in the default exception path;
+- mutate the canonical snapshot after assembly.
+
+`scan` currently commits an artifact using `temporary write -> strict Dogad readback -> identity/status check -> final replace`. Preserve that property when adding future output options: the requested final filename should not intentionally contain a half-written or unreadable `.dogad` after a failed/canceled scan.
+
+`inspect` is deliberately offline and is **not** a placeholder for rule semantics. The future `analyze` command should call Analysis Core over a snapshot; do not grow `inspect` into an ad-hoc rule engine.
+
+Current LDAP production composition uses Negotiate/current OS security context. If an explicit credential workflow is later required, design a secure input/provider abstraction; do not add `--password` or persist a credential into logs/config/snapshot.
+
+See `CLI.md` and `MINILAB_RUNBOOK.md`.
 
 ## Adding a rule
 
@@ -90,13 +121,16 @@ Do not label a calculated possibility as actively confirmed.
 
 For every new foundation behavior, prefer tests before broad feature expansion.
 
-Current CI builds with warnings treated as errors and runs the core test suite on Windows and Linux/.NET 10. Use the executable test command documented in the [foundation review](reviews/2026-09-06-foundation-review.md). Protocol behavior that requires Windows or a real AD will get dedicated integration jobs later.
+Current CI builds with warnings treated as errors and runs the core test suite on Windows and Linux/.NET 10. Use the executable test command documented in the [foundation review](reviews/2026-09-06-foundation-review.md). Protocol behavior that requires Windows or a real AD still needs dedicated live integration evidence.
 
 The SYSVOL worker regression layer intentionally includes a deterministic blocked-operation fixture. It proves timeout -> worker termination -> subsequent worker restart without requiring a real stalled SMB server. This does not replace live DFS/referral/inaccessible-share tests.
 
-Planned test layers:
+The CLI regression layer includes a no-network synthetic end-to-end test through planner -> executor -> snapshot assembly -> `.dogad` write -> strict readback and tests argument/exit-code behavior. This proves composition, not live AD mapping correctness.
 
-- unit tests for mappings and rules;
+Planned/current test layers:
+
+- unit tests for mappings/contracts/CLI behavior;
+- synthetic collection/artifact round trips;
 - golden snapshot/report tests;
 - synthetic large snapshots for performance;
 - clean-domain integration tests;
@@ -105,8 +139,10 @@ Planned test layers:
 - false-positive regression corpus;
 - resource/query-budget benchmarks.
 
+Live runs should create a dated record under `docs/lab-runs/` using `TEMPLATE.md`; do not commit real/customer `.dogad` artifacts.
+
 ## Documentation rule
 
-A change is not considered complete when it materially changes architecture, capability semantics, security boundaries or roadmap status unless documentation is updated in the same branch.
+A change is not considered complete when it materially changes architecture, capability semantics, security boundaries, process UX or roadmap status unless documentation is updated in the same branch.
 
 Use an ADR under `docs/adr/` for decisions that would be expensive to reverse later.
