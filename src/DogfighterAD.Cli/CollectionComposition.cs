@@ -24,6 +24,7 @@ internal static class CollectionComposition
             BindTimeout = LdapBindTimeout,
             RequestTimeout = LdapRequestTimeout,
             AuthenticationMode = SelectAuthenticationMode(ldapCredential),
+            TreatTargetAsFullyQualifiedDnsHostName = UsesExplicitNamedServerBinding(ldapCredential),
             Credential = ldapCredential
         });
         var sysvolFactory = new SystemSysvolClientFactory();
@@ -56,4 +57,7 @@ internal static class CollectionComposition
             ? LdapAuthenticationMode.Ntlm
             : LdapAuthenticationMode.Negotiate;
     }
+
+    internal static bool UsesExplicitNamedServerBinding(NetworkCredential? credential) =>
+        credential is not null;
 }
