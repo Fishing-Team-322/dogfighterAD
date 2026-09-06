@@ -25,4 +25,13 @@ public sealed class LdapFailureClassifierTests
         Assert.DoesNotContain(secret, result.SafeMessage, StringComparison.Ordinal);
         Assert.Contains(errorCode.ToString(), result.SafeMessage, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void AuthenticationFailure_MessageDoesNotAssumeNegotiate()
+    {
+        var result = LdapFailureClassifier.Create(new LdapException(49, "SECRET_CANARY"));
+
+        Assert.Equal("collection.ldap.authentication-failed", result.IssueCode);
+        Assert.DoesNotContain("Negotiate", result.SafeMessage, StringComparison.OrdinalIgnoreCase);
+    }
 }
