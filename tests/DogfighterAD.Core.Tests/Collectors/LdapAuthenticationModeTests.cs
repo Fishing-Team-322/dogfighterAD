@@ -58,7 +58,7 @@ public sealed class LdapAuthenticationModeTests
         Assert.True(identifier.FullyQualifiedDnsHostName);
         Assert.False(identifier.Connectionless);
         Assert.Equal(389, identifier.PortNumber);
-        Assert.Equal(["dc.mini.lab"], identifier.Servers);
+        Assert.Equal(new[] { "dc.mini.lab" }, identifier.Servers);
     }
 
     [Fact]
