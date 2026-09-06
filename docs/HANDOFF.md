@@ -50,7 +50,7 @@ Current phase is defensive/read-only. Do not add exploitation, credential dumpin
 - `minimal` / `audit-full` profiles and execution status/duration telemetry;
 - streaming paged read-only LDAP transport;
 - DACL-only descriptor collection/parsing;
-- read-only SYSVOL abstraction with per-file/count limits;
+- read-only SYSVOL abstraction with source-scope validation, per-file/count limits and bounded maxBytes+1 streaming reads;
 - deterministic `.dogad v1` writer/reader with manifest, SHA-256, canonical JSON checks, size limits and strict entry allowlist.
 
 ## Implemented capabilities
@@ -70,6 +70,8 @@ Current phase is defensive/read-only. Do not add exploitation, credential dumpin
 
 `gpo.sysvol` never persists cpassword itself. Arbitrary Registry.pol string/binary payloads are metadata-only; suspicious INI secret values are redacted. Unknown files are inventory/hash evidence, not assumed understood settings.
 
+SYSVOL scope hardening landed in `946c864d8f7431a80fee315b95a05be2d64424d5`: local/device paths, unrelated authorities/shares/domains, traversal roots and enumerated children outside the approved policy root are rejected before reads. The domain DFS authority and current collection target are approved automatically; alternate DC/referral authorities are explicit configuration. File content is read with a maxBytes+1 detection budget so a growing/underreported stream cannot allocate unbounded content before rejection. GitHub Actions run `34013964260` passed on Linux and Windows. This does not by itself prove real DFS/referral behavior against AD.
+
 ## Profiles
 
 `minimal`: core/domains/users/groups/computers/OUs/memberships/trusts; concurrency 2; collector timeout 2 minutes.
@@ -84,6 +86,7 @@ SHA-256 is integrity detection, not an authenticity signature. Current implement
 
 ## Still pending before auditor-facing Collection Core is trusted
 
+- a hard lifecycle/deadline boundary for blocking filesystem operations that do not observe cooperative cancellation;
 - live `audit-full -> AdSnapshot -> .dogad -> offline read` integration against MINILAB/GOAD;
 - LDAP request/page counting and query/resource benchmarks;
 - peak-memory measurement, especially `.dogad` serialization;
@@ -92,7 +95,7 @@ SHA-256 is integrity detection, not an authenticity signature. Current implement
 
 ## Immediate next work
 
-0. Close the outstanding SYSVOL scope and blocking-I/O/resource issues in the [foundation review](reviews/2026-09-06-foundation-review.md). The review added 33 regression cases and targeted fixes; 100 tests passed locally. CI runs Windows and Linux. No live AD run was performed.
+0. Close the remaining blocking-filesystem I/O deadline/resource-lifecycle blocker from the [foundation review](reviews/2026-09-06-foundation-review.md). Do not fake a hard timeout with `Task.WhenAny` while leaving unbounded background I/O alive; prove termination/drain/resource cleanup with controlled fixtures. SYSVOL source-scope validation and streaming byte-budget gaps are already closed by `946c864d8f7431a80fee315b95a05be2d64424d5`, with Linux/Windows CI green.
 1. Build the live MINILAB/GOAD integration harness and first end-to-end audit-full snapshot/artifact round trip.
 2. Instrument LDAP request/page counts and benchmark query volume/duration/peak memory.
 3. Harden partial-access/referral/SYSVOL behavior from real lab observations.
