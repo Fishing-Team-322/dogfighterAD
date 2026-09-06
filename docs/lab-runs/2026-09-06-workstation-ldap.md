@@ -9,7 +9,12 @@ Baseline: `f537c1c` from the user's `Z:\vs\dogfighterAD` checkout. Scanner host:
 - A diagnostic build localized another stalled run to the directory search after successful binds. Increasing the timeout was not used as the remedy.
 - Setting `LdapSessionOptions.ReferralChasing = None` before binding allowed the same CLI invocation to complete. The clean fixed build then passed three consecutive fresh-process minimal scans with identical counts and no coverage issues.
 - For the later SYSVOL prerequisite check, the workstation used narrow hosts-file entries for `dc.mini.lab` and `mini.lab`, both mapped to `192.168.57.30`. This left the workstation's normal DNS server configuration unchanged.
-- With that narrow name mapping, `mini.lab` resolved to `192.168.57.30` and TCP/445 succeeded from source `192.168.57.1` on the Host-Only adapter. This establishes name resolution and SMB transport reachability only; SMB authentication and SYSVOL read access still require separate validation.
+- With that narrow name mapping, `mini.lab` resolved to `192.168.57.30` and TCP/445 succeeded from source `192.168.57.1` on the Host-Only adapter.
+- `net use \\mini.lab\IPC$ /user:MINILAB\alice *` completed successfully, establishing an authenticated SMB session without placing the password on the command line.
+- `net view \\mini.lab` completed successfully and advertised both `NETLOGON` and `SYSVOL` shares.
+- Before an explicit IPC session to the DC FQDN, `net view \\dc.mini.lab` returned system error 5 (`Access is denied`). An explicit `net use \\dc.mini.lab\IPC$ /user:MINILAB\alice *` then completed successfully.
+- Despite successful IPC authentication, `Get-ChildItem \\mini.lab\SYSVOL\mini.lab\Policies`, `Get-ChildItem \\dc.mini.lab\SYSVOL`, and `Get-ChildItem \\dc.mini.lab\SYSVOL\mini.lab\Policies` all returned `PathNotFound` / `ItemNotFoundException` on the workstation.
+- Therefore SMB transport and credential acceptance are confirmed, but SYSVOL file-tree access is not. The current evidence does not yet distinguish client-side hardened-UNC behavior, server/share-name handling, or another SMB namespace condition. `audit-full` remains blocked until this is localized.
 
 ## Change and scope
 
