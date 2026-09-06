@@ -13,8 +13,10 @@ Baseline: `f537c1c` from the user's `Z:\vs\dogfighterAD` checkout. Scanner host:
 - `net use \\mini.lab\IPC$ /user:MINILAB\alice *` completed successfully, establishing an authenticated SMB session without placing the password on the command line.
 - `net view \\mini.lab` completed successfully and advertised both `NETLOGON` and `SYSVOL` shares.
 - Before an explicit IPC session to the DC FQDN, `net view \\dc.mini.lab` returned system error 5 (`Access is denied`). An explicit `net use \\dc.mini.lab\IPC$ /user:MINILAB\alice *` then completed successfully.
-- Despite successful IPC authentication, `Get-ChildItem \\mini.lab\SYSVOL\mini.lab\Policies`, `Get-ChildItem \\dc.mini.lab\SYSVOL`, and `Get-ChildItem \\dc.mini.lab\SYSVOL\mini.lab\Policies` all returned `PathNotFound` / `ItemNotFoundException` on the workstation.
-- Therefore SMB transport and credential acceptance are confirmed, but SYSVOL file-tree access is not. The current evidence does not yet distinguish client-side hardened-UNC behavior, server/share-name handling, or another SMB namespace condition. `audit-full` remains blocked until this is localized.
+- Despite successful IPC authentication, `Get-ChildItem \\mini.lab\SYSVOL\mini.lab\Policies`, `Get-ChildItem \\dc.mini.lab\SYSVOL`, and `Get-ChildItem \\dc.mini.lab\SYSVOL\mini.lab\Policies` all returned `PathNotFound` / `ItemNotFoundException` on the primary workstation.
+- The same SMB/SYSVOL checks were then repeated from a separate ordinary Windows VM. On that VM, both `net view \\dc.mini.lab` and `net view \\mini.lab` advertised `NETLOGON` and `SYSVOL`; `net use \\dc.mini.lab\IPC$ /user:MINILAB\alice *` succeeded; `\\dc.mini.lab\SYSVOL` listed the `mini.lab` directory link; `\\dc.mini.lab\SYSVOL\mini.lab\Policies` listed the two default GPO directories; and both GPO roots contained `MACHINE`, `USER`, and `GPT.INI`.
+- This comparison confirms that the DC-side SYSVOL share, policy directories, and Alice SMB access are functional. The unresolved `PathNotFound` behavior is specific to the primary workstation's Windows SMB/UNC client environment rather than evidence that SYSVOL is absent on the DC.
+- No scanner fallback or SYSVOL scope relaxation is justified by this result: the primary workstation cannot open even the direct `\\dc.mini.lab\SYSVOL` share root, so rewriting a domain-style GPO path to the selected DC would not solve the observed client-side failure.
 
 ## Change and scope
 
