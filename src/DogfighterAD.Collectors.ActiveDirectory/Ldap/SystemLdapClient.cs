@@ -22,16 +22,12 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
         cancellationToken.ThrowIfCancellationRequested();
 
         var identifier = new LdapDirectoryIdentifier(target, _options.Port);
-        var connection = new LdapConnection(identifier)
-        {
-            AuthType = AuthType.Negotiate
-        };
+        var connection = _options.Credential is null
+            ? new LdapConnection(identifier)
+            : new LdapConnection(identifier, _options.Credential, AuthType.Negotiate);
 
-        if (_options.Credential is not null)
-        {
-            connection.Credential = _options.Credential;
-        }
-
+        connection.AuthType = AuthType.Negotiate;
+        connection.Timeout = _options.RequestTimeout;
         connection.SessionOptions.ProtocolVersion = 3;
         connection.SessionOptions.SecureSocketLayer = _options.UseLdaps;
 
@@ -175,12 +171,28 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        IAsyncResult pendingRequest = _connection.BeginSendRequest(
-            request,
-            _requestTimeout,
-            PartialResultProcessing.NoPartialResultSupport,
-            callback: null,
-            state: null);
+        IAsyncResult pendingRequest;
+        try
+        {
+            pendingRequest = _connection.BeginSendRequest(
+                request,
+                _requestTimeout,
+                PartialResultProcessing.NoPartialResultSupport,
+                callback: null,
+                state: null);
+        }
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
+        catch (LdapException exception)
+        {
+            throw LdapFailureClassifier.Create(exception);
+        }
+        catch (DirectoryOperationException exception)
+        {
+            throw LdapFailureClassifier.Create(exception);
+        }
 
         using var cancellationRegistration = cancellationToken.Register(
             static state =>
@@ -210,6 +222,14 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
         catch (Exception) when (cancellationToken.IsCancellationRequested)
         {
             throw new OperationCanceledException(cancellationToken);
+        }
+        catch (LdapException exception)
+        {
+            throw LdapFailureClassifier.Create(exception);
+        }
+        catch (DirectoryOperationException exception)
+        {
+            throw LdapFailureClassifier.Create(exception);
         }
     }
 
