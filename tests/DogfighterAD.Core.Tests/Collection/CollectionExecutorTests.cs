@@ -82,6 +82,35 @@ public sealed class CollectionExecutorTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_OperationalFailurePreservesSafeIssueOnly()
+    {
+        const string safeMessage = "LDAP authentication failed (code=49/InvalidCredentials).";
+        var collector = new ThrowingCollector(
+            "root",
+            CollectionCapabilities.DirectoryCore,
+            new CollectorOperationalException(
+                "collection.ldap.authentication-failed",
+                safeMessage,
+                new InvalidOperationException("SECRET_CANARY")));
+        var plan = CreatePlan(
+            [CollectionCapabilities.DirectoryCore],
+            [collector]);
+
+        var result = await new CollectionExecutor().ExecuteAsync(
+            plan,
+            Guid.NewGuid(),
+            "dc01.mini.lab",
+            CancellationToken.None);
+
+        var coverage = Assert.Single(result.Data.Coverage);
+        Assert.Equal(CapabilityStatus.Failed, coverage.Status);
+        var issue = Assert.Single(coverage.Issues);
+        Assert.Equal("collection.ldap.authentication-failed", issue.Code);
+        Assert.Equal(safeMessage, issue.Message);
+        Assert.DoesNotContain("SECRET_CANARY", issue.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_SameStageCollectorsSeeSamePriorState()
     {
         var first = new RecordingCollector(
@@ -121,6 +150,32 @@ public sealed class CollectionExecutorTests
                 CollectorTimeout = TimeSpan.FromSeconds(5)
             },
             collectors);
+
+    private sealed class ThrowingCollector : ICollector
+    {
+        private readonly Exception _exception;
+
+        public ThrowingCollector(string id, string capability, Exception exception)
+        {
+            Id = id;
+            ProvidesCapabilities = new HashSet<string>(StringComparer.Ordinal) { capability };
+            _exception = exception;
+        }
+
+        public string Id { get; }
+        public string Version => "test";
+        public IReadOnlySet<string> ProvidesCapabilities { get; }
+        public IReadOnlySet<string> RequiresCapabilities { get; } =
+            new HashSet<string>(StringComparer.Ordinal);
+
+        public Task<CollectorResult> CollectAsync(
+            CollectionContext context,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromException<CollectorResult>(_exception);
+        }
+    }
 
     private sealed class RecordingCollector : ICollector
     {
