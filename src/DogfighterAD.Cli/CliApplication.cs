@@ -87,9 +87,11 @@ internal static class CliApplication
                 .ConfigureAwait(false);
 
         var ldapAuthMode = CollectionComposition.SelectAuthenticationMode(ldapCredential?.Credential);
+        var namedServerBinding = CollectionComposition.UsesExplicitNamedServerBinding(ldapCredential?.Credential);
         await error.WriteLineAsync(
                 $"Starting collection: target={command.Target} profile={profile.Name} " +
                 $"ldap-auth={ldapAuthMode.ToString().ToLowerInvariant()} " +
+                $"ldap-target-mode={(namedServerBinding ? "fqdn-server" : "discovery")} " +
                 $"bind-timeout={CollectionComposition.LdapBindTimeout} " +
                 $"request-timeout={CollectionComposition.LdapRequestTimeout} " +
                 $"collector-timeout={profile.CollectorTimeout}.")
