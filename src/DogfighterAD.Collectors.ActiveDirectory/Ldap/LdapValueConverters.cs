@@ -4,6 +4,9 @@ namespace DogfighterAD.Collectors.ActiveDirectory.Ldap;
 
 internal static class LdapValueConverters
 {
+    private const int MaxSidSubAuthorities = 15;
+    private const ulong MaxSidIdentifierAuthority = 0x0000FFFFFFFFFFFFUL;
+
     private static readonly string[] GeneralizedTimeFormats =
     [
         "yyyyMMddHHmmss'Z'",
@@ -18,18 +21,14 @@ internal static class LdapValueConverters
 
     public static string? GetSid(LdapSearchEntry entry, string attributeName)
     {
-        var value = entry.GetBinaryValues(attributeName).SingleOrDefault();
-        return value is null ? null : FormatSid(value);
+        var values = GetNormalizedSids(entry, attributeName)
+            .Take(2)
+            .ToArray();
+        return values.Length == 1 ? values[0] : null;
     }
 
     public static IReadOnlyList<string> GetSids(LdapSearchEntry entry, string attributeName) =>
-        entry.GetBinaryValues(attributeName)
-            .Select(value => FormatSid(value))
-            .Where(value => value is not null)
-            .Cast<string>()
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        GetNormalizedSids(entry, attributeName).ToArray();
 
     public static int? GetInt32(LdapSearchEntry entry, string attributeName)
     {
@@ -124,7 +123,7 @@ internal static class LdapValueConverters
         var revision = sid[0];
         var subAuthorityCount = sid[1];
         var requiredLength = 8 + (subAuthorityCount * 4);
-        if (sid.Length < requiredLength)
+        if (subAuthorityCount > MaxSidSubAuthorities || sid.Length < requiredLength)
         {
             return null;
         }
@@ -156,5 +155,79 @@ internal static class LdapValueConverters
         }
 
         return string.Join('-', parts);
+    }
+
+    private static IEnumerable<string> GetNormalizedSids(
+        LdapSearchEntry entry,
+        string attributeName)
+    {
+        var values = new List<string>();
+
+        foreach (var binary in entry.GetBinaryValues(attributeName))
+        {
+            var normalized = FormatSid(binary);
+            if (normalized is not null)
+            {
+                values.Add(normalized);
+            }
+        }
+
+        foreach (var text in entry.GetTextValues(attributeName))
+        {
+            var normalized = NormalizeSidText(text);
+            if (normalized is not null)
+            {
+                values.Add(normalized);
+            }
+        }
+
+        return values
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string? NormalizeSidText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var parts = value.Trim().Split('-', StringSplitOptions.None);
+        if (parts.Length < 3 ||
+            !parts[0].Equals("S", StringComparison.OrdinalIgnoreCase) ||
+            !byte.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var revision) ||
+            !ulong.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out var identifierAuthority) ||
+            identifierAuthority > MaxSidIdentifierAuthority)
+        {
+            return null;
+        }
+
+        var subAuthorityCount = parts.Length - 3;
+        if (subAuthorityCount > MaxSidSubAuthorities)
+        {
+            return null;
+        }
+
+        var normalized = new string[parts.Length];
+        normalized[0] = "S";
+        normalized[1] = revision.ToString(CultureInfo.InvariantCulture);
+        normalized[2] = identifierAuthority.ToString(CultureInfo.InvariantCulture);
+
+        for (var index = 3; index < parts.Length; index++)
+        {
+            if (!uint.TryParse(
+                    parts[index],
+                    NumberStyles.None,
+                    CultureInfo.InvariantCulture,
+                    out var subAuthority))
+            {
+                return null;
+            }
+
+            normalized[index] = subAuthority.ToString(CultureInfo.InvariantCulture);
+        }
+
+        return string.Join('-', normalized);
     }
 }
