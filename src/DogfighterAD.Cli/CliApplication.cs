@@ -95,6 +95,16 @@ internal static class CliApplication
                 $"collector-timeout={profile.CollectorTimeout}.")
             .ConfigureAwait(false);
 
+        var progressGate = new object();
+        void WriteProgress(CollectionProgressEvent progressEvent)
+        {
+            lock (progressGate)
+            {
+                error.WriteLine(FormatCollectionProgress(progressEvent));
+                error.Flush();
+            }
+        }
+
         var collectors = CollectionComposition.CreateCollectors(command, ldapCredential?.Credential);
         var workflow = new ScanWorkflow();
         var result = await workflow.ExecuteAsync(
@@ -104,7 +114,8 @@ internal static class CliApplication
                     OutputPath = command.OutputPath,
                     ProductVersion = productVersion,
                     Profile = profile,
-                    Collectors = collectors
+                    Collectors = collectors,
+                    Progress = WriteProgress
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -114,6 +125,38 @@ internal static class CliApplication
             .ConfigureAwait(false);
 
         return CliExitCodes.FromSnapshotStatus(result.Snapshot.Metadata.CompletionStatus);
+    }
+
+    internal static string FormatCollectionProgress(CollectionProgressEvent progressEvent)
+    {
+        ArgumentNullException.ThrowIfNull(progressEvent);
+
+        var elapsed = progressEvent.Elapsed is null
+            ? string.Empty
+            : $" elapsed={progressEvent.Elapsed.Value}";
+        var timeout = progressEvent.Timeout is null
+            ? string.Empty
+            : $" timeout={progressEvent.Timeout.Value}";
+        var issue = string.IsNullOrWhiteSpace(progressEvent.IssueCode)
+            ? string.Empty
+            : $" issue={progressEvent.IssueCode}";
+
+        return progressEvent.State switch
+        {
+            CollectionProgressState.Started =>
+                $"[collection] start collector={progressEvent.CollectorId}{timeout}",
+            CollectionProgressState.Completed =>
+                $"[collection] done collector={progressEvent.CollectorId}{elapsed}",
+            CollectionProgressState.Failed =>
+                $"[collection] failed collector={progressEvent.CollectorId}{issue}{elapsed}",
+            CollectionProgressState.TimedOut =>
+                $"[collection] timeout collector={progressEvent.CollectorId}{issue}{elapsed}{timeout}",
+            CollectionProgressState.Blocked =>
+                $"[collection] blocked collector={progressEvent.CollectorId}{issue}",
+            CollectionProgressState.Canceled =>
+                $"[collection] canceled collector={progressEvent.CollectorId}{elapsed}",
+            _ => $"[collection] collector={progressEvent.CollectorId} state={progressEvent.State}"
+        };
     }
 
     private static async Task<int> RunInspectAsync(
