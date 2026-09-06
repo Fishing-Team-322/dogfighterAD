@@ -85,6 +85,11 @@ internal static class CliApplication
             : await ConsoleCredentialPrompt
                 .ReadNetworkCredentialAsync(command.Username, error, cancellationToken)
                 .ConfigureAwait(false);
+
+        await error.WriteLineAsync(
+                $"Starting collection: target={command.Target} profile={profile.Name} collector-timeout={profile.CollectorTimeout}.")
+            .ConfigureAwait(false);
+
         var collectors = CollectionComposition.CreateCollectors(command, ldapCredential?.Credential);
         var workflow = new ScanWorkflow();
         var result = await workflow.ExecuteAsync(
