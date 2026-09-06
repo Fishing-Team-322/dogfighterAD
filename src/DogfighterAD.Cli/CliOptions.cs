@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace DogfighterAD.Cli;
 
 internal abstract record CliCommand;
@@ -10,7 +12,6 @@ internal sealed record ScanCommand : CliCommand
     public bool UseLdaps { get; init; }
     public int? LdapPort { get; init; }
     public string? Username { get; init; }
-    public bool PromptForPassword { get; init; }
     public IReadOnlySet<string> ApprovedSysvolAuthorities { get; init; } =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 }
@@ -30,9 +31,11 @@ internal sealed record CliParseResult(
 
 internal static class CliArgumentParser
 {
-    private static readonly IReadOnlySet<string> ProhibitedCredentialOptions =
+    private static readonly IReadOnlySet<string> ProhibitedPasswordOptions =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
+            "-p",
+            "--password",
             "--passwd",
             "--credential",
             "--credentials"
@@ -66,7 +69,6 @@ internal static class CliArgumentParser
         var useLdaps = false;
         int? ldapPort = null;
         string? username = null;
-        var promptForPassword = false;
         var authorities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (var index = 0; index < args.Count; index++)
@@ -77,14 +79,9 @@ internal static class CliArgumentParser
                 return new CliParseResult(null, ShowHelp: true, Error: null);
             }
 
-            if (LooksLikeInlinePassword(token))
+            if (LooksLikeInlinePassword(token) || ProhibitedPasswordOptions.Contains(token))
             {
-                return PasswordValueRejected();
-            }
-
-            if (ProhibitedCredentialOptions.Contains(token))
-            {
-                return PasswordValueRejected();
+                return PasswordOptionRejected();
             }
 
             switch (token)
@@ -137,15 +134,6 @@ internal static class CliArgumentParser
                     }
                     break;
 
-                case "-p":
-                case "--password":
-                    if (index + 1 < args.Count && !IsOptionToken(args[index + 1]))
-                    {
-                        return PasswordValueRejected();
-                    }
-                    promptForPassword = true;
-                    break;
-
                 case "--sysvol-authority":
                     if (!TryReadValue(args, ref index, out var authority))
                     {
@@ -175,20 +163,12 @@ internal static class CliArgumentParser
             return new CliParseResult(null, false, "scan output must use the .dogad extension.");
         }
 
-        if (username is not null && !promptForPassword)
+        if (username is not null && IPAddress.TryParse(target, out _))
         {
             return new CliParseResult(
                 null,
                 false,
-                "-u/--username requires -p/--password so the LDAP password is read from a hidden interactive prompt.");
-        }
-
-        if (promptForPassword && string.IsNullOrWhiteSpace(username))
-        {
-            return new CliParseResult(
-                null,
-                false,
-                "-p/--password requires -u/--username <DOMAIN\\user|user@domain>.");
+                "Explicit LDAP Negotiate credentials require a DNS hostname target. Use a resolvable DC FQDN instead of an IP address.");
         }
 
         return new CliParseResult(
@@ -200,7 +180,6 @@ internal static class CliArgumentParser
                 UseLdaps = useLdaps,
                 LdapPort = ldapPort,
                 Username = username,
-                PromptForPassword = promptForPassword,
                 ApprovedSysvolAuthorities = authorities
             },
             ShowHelp: false,
@@ -265,11 +244,11 @@ internal static class CliArgumentParser
     private static CliParseResult MissingValue(string option) =>
         new(null, ShowHelp: false, Error: $"Option '{option}' requires a value.");
 
-    private static CliParseResult PasswordValueRejected() =>
+    private static CliParseResult PasswordOptionRejected() =>
         new(
             null,
             ShowHelp: false,
-            Error: "Password values are never accepted in command-line arguments. Use -u/--username with -p/--password to enter the LDAP password in a hidden interactive prompt.");
+            Error: "Password command-line options are not supported. Supply -u/--username only; DogfighterAD then reads the LDAP password from a hidden interactive prompt.");
 
     private static bool LooksLikeInlinePassword(string token) =>
         token.StartsWith("--password=", StringComparison.OrdinalIgnoreCase) ||
