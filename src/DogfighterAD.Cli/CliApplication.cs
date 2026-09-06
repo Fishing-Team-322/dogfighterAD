@@ -86,8 +86,13 @@ internal static class CliApplication
                 .ReadNetworkCredentialAsync(command.Username, error, cancellationToken)
                 .ConfigureAwait(false);
 
+        var ldapAuthMode = CollectionComposition.SelectAuthenticationMode(ldapCredential?.Credential);
         await error.WriteLineAsync(
-                $"Starting collection: target={command.Target} profile={profile.Name} collector-timeout={profile.CollectorTimeout}.")
+                $"Starting collection: target={command.Target} profile={profile.Name} " +
+                $"ldap-auth={ldapAuthMode.ToString().ToLowerInvariant()} " +
+                $"bind-timeout={CollectionComposition.LdapBindTimeout} " +
+                $"request-timeout={CollectionComposition.LdapRequestTimeout} " +
+                $"collector-timeout={profile.CollectorTimeout}.")
             .ConfigureAwait(false);
 
         var collectors = CollectionComposition.CreateCollectors(command, ldapCredential?.Credential);
@@ -147,10 +152,13 @@ internal static class CliApplication
             .ConfigureAwait(false);
         await writer.WriteLineAsync().ConfigureAwait(false);
         await writer.WriteLineAsync(
-                "Authentication: LDAP defaults to the current operating-system security context. Supplying -u/--username enables an explicit LDAP Negotiate credential and automatically opens a hidden password prompt; password command-line options are rejected.")
+                "Authentication: LDAP defaults to the current operating-system security context with Negotiate. Supplying -u/--username automatically opens a hidden password prompt; password command-line options are rejected.")
             .ConfigureAwait(false);
         await writer.WriteLineAsync(
-                "Explicit LDAP Negotiate credentials require a DNS hostname target rather than an IP address.")
+                "For explicit DOMAIN\\user credentials Dogfighter uses NTLM challenge/response to the named DC so a non-domain workstation does not depend on Kerberos KDC/SPN discovery. Explicit UPN credentials retain Negotiate.")
+            .ConfigureAwait(false);
+        await writer.WriteLineAsync(
+                "Explicit LDAP credentials require a DNS hostname target rather than an IP address.")
             .ConfigureAwait(false);
         await writer.WriteLineAsync(
                 "SYSVOL/SMB still uses the operating-system network security context. Explicit LDAP credentials do not establish an SMB session or repair DNS/routing.")
