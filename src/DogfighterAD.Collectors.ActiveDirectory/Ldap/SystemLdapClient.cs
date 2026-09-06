@@ -56,6 +56,16 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
         LdapSecurityDescriptorSections.Dacl |
         LdapSecurityDescriptorSections.Sacl;
 
+    private static readonly IReadOnlySet<string> BinaryAttributeNames =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "objectGUID",
+            "objectSid",
+            "sIDHistory",
+            "securityIdentifier",
+            "nTSecurityDescriptor"
+        };
+
     private readonly LdapConnection _connection;
     private readonly TimeSpan _requestTimeout;
     private bool _disposed;
@@ -206,27 +216,7 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
         foreach (string attributeName in entry.Attributes.AttributeNames)
         {
             var attribute = entry.Attributes[attributeName];
-            var values = new List<LdapAttributeValue>(attribute.Count);
-
-            for (var index = 0; index < attribute.Count; index++)
-            {
-                var rawValue = attribute[index];
-                switch (rawValue)
-                {
-                    case byte[] bytes:
-                        values.Add(LdapAttributeValue.FromBytes(bytes));
-                        break;
-                    case string text:
-                        values.Add(LdapAttributeValue.FromText(text));
-                        break;
-                    default:
-                        values.Add(LdapAttributeValue.FromText(
-                            Convert.ToString(rawValue, CultureInfo.InvariantCulture) ?? string.Empty));
-                        break;
-                }
-            }
-
-            attributes[attributeName] = values;
+            attributes[attributeName] = MapAttributeValues(attributeName, attribute);
         }
 
         return new LdapSearchEntry
@@ -234,6 +224,29 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
             DistinguishedName = entry.DistinguishedName ?? string.Empty,
             Attributes = attributes
         };
+    }
+
+    internal static IReadOnlyList<LdapAttributeValue> MapAttributeValues(
+        string attributeName,
+        DirectoryAttribute attribute)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(attributeName);
+        ArgumentNullException.ThrowIfNull(attribute);
+
+        if (BinaryAttributeNames.Contains(attributeName))
+        {
+            return attribute
+                .GetValues(typeof(byte[]))
+                .Cast<byte[]>()
+                .Select(LdapAttributeValue.FromBytes)
+                .ToArray();
+        }
+
+        return attribute
+            .GetValues(typeof(string))
+            .Select(value => LdapAttributeValue.FromText(
+                Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty))
+            .ToArray();
     }
 
     private static SearchScope MapScope(LdapSearchScope scope) => scope switch
