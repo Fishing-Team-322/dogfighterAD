@@ -42,7 +42,7 @@ public sealed class CollectionPlanner
 
         var selectedCollectors = selectedByCapability.Values
             .GroupBy(x => x.Id, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
+            .ToDictionary(group => group.Key, group => group.Distinct().Single(), StringComparer.Ordinal);
 
         var selectedCapabilitiesByCollector = selectedByCapability
             .GroupBy(pair => pair.Value.Id, pair => pair.Key, StringComparer.Ordinal)

@@ -116,6 +116,10 @@ SHA-256 is integrity detection, not an authenticity signature. Current implement
 - peak-memory measurement, especially `.dogad` serialization;
 - broader forest/multi-domain/ADCS/LAPS/gMSA/Kerberos areas later.
 
+## Latest local validation
+
+See [MINILAB readiness run](lab-runs/2026-09-06-minilab-readiness.md): the running DC is still in WORKGROUP without AD DS/DNS/SYSVOL. A CLI planner bug was fixed with two production-registry regressions (122 tests passing locally). The negative-path scan and artifact readback correctly report Failed; successful live-domain validation is still pending.
+
 ## Immediate next work
 
 0. Execute and record the first MINILAB validation using `MINILAB_RUNBOOK.md`: `minimal` first, then `audit-full`, with exact build SHA, fixture state, expected/actual counts, coverage and offline readback. Use `docs/lab-runs/TEMPLATE.md` for the result record.
