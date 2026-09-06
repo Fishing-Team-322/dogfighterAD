@@ -132,6 +132,13 @@ public sealed record LdapClientOptions
     public LdapAuthenticationMode AuthenticationMode { get; init; } = LdapAuthenticationMode.Negotiate;
 
     /// <summary>
+    /// Marks the supplied target as the fully-qualified DNS name of the exact LDAP server rather
+    /// than a domain/server name that Windows LDAP may try to rediscover. Use only when the caller
+    /// contract already requires a named server FQDN.
+    /// </summary>
+    public bool TreatTargetAsFullyQualifiedDnsHostName { get; init; }
+
+    /// <summary>
     /// Optional explicit credential for LDAP authentication. When null, the current operating-system
     /// security context is used. Credential material is runtime-only and is never snapshot data.
     /// </summary>
