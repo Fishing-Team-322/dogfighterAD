@@ -86,7 +86,7 @@ public sealed class AclCollector : ICollector
         var request = new LdapSearchRequest
         {
             BaseDn = baseDn,
-            Filter = BuildFilter(),
+            Filter = BuildFilter(context.AvailableData.Content.Domains.Single().Id.Value),
             Scope = LdapSearchScope.Subtree,
             Attributes = ["objectGUID", "nTSecurityDescriptor"],
             PageSize = DefaultPageSize,
@@ -251,9 +251,9 @@ public sealed class AclCollector : ICollector
             .ToDictionary(item => item.Id, item => item.DistinguishedName);
     }
 
-    private static string BuildFilter() =>
+    internal static string BuildFilter(Guid domainObjectGuid) =>
         "(|" +
-        "(objectClass=domainDNS)" +
+        $"(objectGUID={LdapFilterEncoding.EncodeOctetString(domainObjectGuid.ToByteArray())})" +
         "(&(objectCategory=person)(objectClass=user))" +
         "(objectCategory=group)" +
         "(objectCategory=computer)" +
