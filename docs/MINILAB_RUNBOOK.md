@@ -11,11 +11,13 @@ Use an assessment identity authorized for read-only directory/SYSVOL access. Dog
 LDAP authentication has two supported execution modes:
 
 - current operating-system security context; or
-- explicit LDAP username plus hidden password prompt using `-u <DOMAIN\user|user@domain> -p`.
+- explicit LDAP username using `-u <DOMAIN\user|user@domain>`, which automatically opens a hidden password prompt.
 
-`-p` is a prompt switch. It never accepts the password as an argument value.
+There is no `-p` password flag. Password command-line options/values are intentionally rejected.
 
 Explicit CLI credentials currently apply to LDAP only. SYSVOL/SMB still uses the operating-system network security context because the isolated worker uses Windows filesystem/SMB APIs.
+
+When `-u` is used, the LDAP target must be a DNS hostname/FQDN. An IP literal is rejected before prompting because explicit Negotiate authentication by IP has ambiguous Kerberos/NTLM behavior and a live workstation test demonstrated a non-returning path. Fix/override lab name resolution and use the DC FQDN instead of using an IP as an authentication workaround.
 
 Prefer a Windows test host for the first `audit-full` run because SYSVOL/SMB behavior is a primary validation target. The collection code itself remains cross-platform tested where practical.
 
@@ -61,13 +63,28 @@ If LDAP credentials are needed from the workstation, use the hidden prompt form:
   --target dc.mini.lab `
   --profile minimal `
   -u 'MINILAB\alice' `
-  -p `
   --output .\lab-artifacts\mini-minimal-remote.dogad
 ```
 
-Do not use `-p <password>` or `--password=<password>`; those forms are intentionally rejected.
+The password prompt is automatic after `-u`. Do not add `-p`, `--password` or any password value to the command line.
 
-For an `audit-full` remote run, the LDAP prompt does not create the SMB session. Establish the authorized Windows network context separately (for example a controlled `runas /netonly` shell) and then run DogfighterAD from that context.
+For an `audit-full` remote run, the LDAP prompt does not create the SMB session. Establish the authorized Windows network context separately (for example a controlled `runas /netonly` shell or an explicit Windows SMB session appropriate to the isolated lab) and then run DogfighterAD from that context.
+
+### Interpreting collection failures
+
+The CLI prints sanitized issue details beneath affected capability rows. Record the issue **code and message**, not only `Failed`/`Partial`.
+
+Known LDAP operational failures are classified without persisting raw server/exception text. Expected examples include:
+
+- `collection.ldap.authentication-failed`
+- `collection.ldap.server-unavailable`
+- `collection.ldap.timeout`
+- `collection.ldap.security-required`
+- `collection.ldap.failed`
+
+Numeric LDAP/result codes may be included in the safe message. Do not infer a bad password from a generic collector failure; use the actual emitted issue classification.
+
+The production LDAP connection has a 30-second connection/request timeout in addition to the profile collector timeout. A scan that does not return within the expected outer collector boundary is itself a live defect to record.
 
 ## 2. Build the exact commit
 
@@ -113,7 +130,7 @@ Expected capability set:
 - `directory.memberships`
 - `directory.trusts`
 
-Record the command exit code and every capability status. A `Partial` or `Failed` result is a validation finding to investigate, not something to normalize away.
+Record the command exit code and every capability status. A `Partial` or `Failed` result is a validation finding to investigate, not something to normalize away. Also record every printed issue code/message for non-Complete capabilities.
 
 ## 4. Offline readback
 
@@ -205,12 +222,14 @@ Recommended cases:
 4. Unavailable/slow SYSVOL operation -> worker timeout/termination must not hang the scan indefinitely.
 5. Insufficient ACL read permissions -> `directory.acls` must be incomplete rather than clean.
 6. Large/ranged group membership -> verify range retrieval and final member count.
-7. LDAP cancellation (Ctrl+C) -> no successful final artifact should be published as if complete.
+7. LDAP cancellation (Ctrl+C), including during the hidden password prompt -> no successful final artifact should be published as if complete.
 8. Referral/inaccessible naming-context fixture when available -> capture actual current behavior before hardening it.
 9. Remote workstation DNS failure -> collection must fail/partial rather than being misdiagnosed as an authentication problem.
-10. Explicit LDAP prompt credential with no SMB network context -> minimal may succeed while `gpo.sysvol` remains incomplete; record the distinction.
+10. Explicit LDAP username with no SMB network context -> minimal may succeed while `gpo.sysvol` remains incomplete; record the distinction.
+11. Explicit LDAP username with an IP-literal target -> parser must reject it immediately with an invalid-arguments result instead of entering Negotiate/network collection.
+12. Wrong explicit LDAP credential in the lab -> expect a sanitized authentication issue (typically `collection.ldap.authentication-failed`) and no credential text in output/artifact.
 
-For every case record the capability status and issue code, not just console text.
+For every case record the capability status and issue code/message, not just the process exit or generic console text.
 
 ## 8. Read-only validation
 
@@ -242,6 +261,7 @@ Create a dated record under `docs/lab-runs/` using the template in that director
 - commands and exit codes;
 - expected vs actual counts;
 - capability coverage/statuses;
+- issue codes/messages for incomplete capabilities;
 - observed defects or unexplained differences;
 - whether `.dogad` offline readback succeeded;
 - measured duration and, once telemetry exists, LDAP request/page counts and peak memory;
