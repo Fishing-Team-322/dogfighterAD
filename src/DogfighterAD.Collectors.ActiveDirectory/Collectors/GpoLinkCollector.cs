@@ -92,7 +92,7 @@ public sealed class GpoLinkCollector : ICollector
         var request = new LdapSearchRequest
         {
             BaseDn = baseDn,
-            Filter = "(|(objectClass=domainDNS)(objectClass=organizationalUnit))",
+            Filter = BuildFilter(context.AvailableData.Content.Domains.Single().Id.Value),
             Scope = LdapSearchScope.Subtree,
             Attributes = ["objectGUID", "gPLink", "gPOptions"],
             PageSize = DefaultPageSize
@@ -286,6 +286,12 @@ public sealed class GpoLinkCollector : ICollector
                     .ToArray()
             });
     }
+
+    internal static string BuildFilter(Guid domainObjectGuid) =>
+        "(|" +
+        $"(objectGUID={LdapFilterEncoding.EncodeOctetString(domainObjectGuid.ToByteArray())})" +
+        "(objectClass=organizationalUnit)" +
+        ")";
 
     internal static GpoLinkParseResult ParseLinks(string value)
     {
