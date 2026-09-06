@@ -27,6 +27,11 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
             AuthType = AuthType.Negotiate
         };
 
+        if (_options.Credential is not null)
+        {
+            connection.Credential = _options.Credential;
+        }
+
         connection.SessionOptions.ProtocolVersion = 3;
         connection.SessionOptions.SecureSocketLayer = _options.UseLdaps;
 
