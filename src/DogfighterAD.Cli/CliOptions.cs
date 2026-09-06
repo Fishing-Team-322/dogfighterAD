@@ -168,7 +168,7 @@ internal static class CliArgumentParser
             return new CliParseResult(
                 null,
                 false,
-                "Explicit LDAP Negotiate credentials require a DNS hostname target. Use a resolvable DC FQDN instead of an IP address.");
+                "Explicit LDAP credentials require a DNS hostname target. Use a resolvable DC FQDN instead of an IP address.");
         }
 
         return new CliParseResult(
@@ -259,7 +259,5 @@ internal static class CliArgumentParser
         value.Length > 0 && value[0] == '-';
 
     private static bool IsHelp(string value) =>
-        string.Equals(value, "--help", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(value, "-h", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(value, "help", StringComparison.OrdinalIgnoreCase);
+        value is "--help" or "-h" or "/?";
 }
