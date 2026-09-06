@@ -82,7 +82,9 @@ internal static class CliApplication
 
         var ldapCredential = command.Username is null
             ? null
-            : ConsoleCredentialPrompt.ReadNetworkCredential(command.Username, error);
+            : await ConsoleCredentialPrompt
+                .ReadNetworkCredentialAsync(command.Username, error, cancellationToken)
+                .ConfigureAwait(false);
         var collectors = CollectionComposition.CreateCollectors(command, ldapCredential);
         var workflow = new ScanWorkflow();
         var result = await workflow.ExecuteAsync(
@@ -133,14 +135,17 @@ internal static class CliApplication
         await writer.WriteLineAsync().ConfigureAwait(false);
         await writer.WriteLineAsync("Usage:").ConfigureAwait(false);
         await writer.WriteLineAsync(
-                "  dogfighter scan --target <host-or-domain> --output <snapshot.dogad> [--profile minimal|audit-full] [-u <DOMAIN\\user|user@domain> -p] [--ldaps] [--ldap-port <1-65535>] [--sysvol-authority <host>]...")
+                "  dogfighter scan --target <host-or-domain> --output <snapshot.dogad> [--profile minimal|audit-full] [-u <DOMAIN\\user|user@domain>] [--ldaps] [--ldap-port <1-65535>] [--sysvol-authority <host>]...")
             .ConfigureAwait(false);
         await writer.WriteLineAsync(
                 "  dogfighter inspect --snapshot <snapshot.dogad>")
             .ConfigureAwait(false);
         await writer.WriteLineAsync().ConfigureAwait(false);
         await writer.WriteLineAsync(
-                "Authentication: LDAP defaults to the current operating-system security context. -u/--username with -p/--password enables an explicit LDAP Negotiate credential; -p is a prompt switch and never accepts a password value in arguments.")
+                "Authentication: LDAP defaults to the current operating-system security context. Supplying -u/--username enables an explicit LDAP Negotiate credential and automatically opens a hidden password prompt; password command-line options are rejected.")
+            .ConfigureAwait(false);
+        await writer.WriteLineAsync(
+                "Explicit LDAP Negotiate credentials require a DNS hostname target rather than an IP address.")
             .ConfigureAwait(false);
         await writer.WriteLineAsync(
                 "SYSVOL/SMB still uses the operating-system network security context. Explicit LDAP credentials do not establish an SMB session or repair DNS/routing.")
