@@ -26,6 +26,30 @@ public sealed record CollectorResult(
     string CollectorVersion,
     SnapshotFragment Fragment);
 
+/// <summary>
+/// Represents an expected operational collection failure whose issue code and message are safe to
+/// persist in snapshot coverage. Inner exception data remains runtime-only and is never copied into
+/// snapshot artifacts or default CLI output.
+/// </summary>
+public sealed class CollectorOperationalException : Exception
+{
+    public CollectorOperationalException(
+        string issueCode,
+        string safeMessage,
+        Exception? innerException = null)
+        : base(safeMessage, innerException)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(issueCode);
+        ArgumentException.ThrowIfNullOrWhiteSpace(safeMessage);
+
+        IssueCode = issueCode;
+        SafeMessage = safeMessage;
+    }
+
+    public string IssueCode { get; }
+    public string SafeMessage { get; }
+}
+
 public interface IRule
 {
     RuleMetadata Metadata { get; }
