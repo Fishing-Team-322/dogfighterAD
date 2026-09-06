@@ -117,14 +117,22 @@ public sealed record LdapAttributeValue
         new(null, (value ?? throw new ArgumentNullException(nameof(value))).ToArray());
 }
 
+public enum LdapAuthenticationMode
+{
+    Negotiate,
+    Ntlm
+}
+
 public sealed record LdapClientOptions
 {
     public int Port { get; init; } = 389;
     public bool UseLdaps { get; init; }
+    public TimeSpan BindTimeout { get; init; } = TimeSpan.FromSeconds(15);
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    public LdapAuthenticationMode AuthenticationMode { get; init; } = LdapAuthenticationMode.Negotiate;
 
     /// <summary>
-    /// Optional explicit credential for LDAP Negotiate. When null, the current operating-system
+    /// Optional explicit credential for LDAP authentication. When null, the current operating-system
     /// security context is used. Credential material is runtime-only and is never snapshot data.
     /// </summary>
     public NetworkCredential? Credential { get; init; }
