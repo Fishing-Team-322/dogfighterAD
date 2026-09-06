@@ -31,32 +31,49 @@ public sealed class CliTests
         Assert.True(command.UseLdaps);
         Assert.Equal(636, command.LdapPort);
         Assert.Null(command.Username);
-        Assert.False(command.PromptForPassword);
         Assert.Equal(2, command.ApprovedSysvolAuthorities.Count);
     }
 
     [Fact]
-    public void ScanArguments_ParsePromptedLdapCredential()
+    public void ScanArguments_UsernameEnablesPromptedLdapCredential()
     {
         var result = CliArgumentParser.Parse(
         [
             "scan",
             "--target", "dc.mini.lab",
             "--output", "audit.dogad",
-            "-u", "MINILAB\\alice",
-            "-p"
+            "-u", "MINILAB\\alice"
         ]);
 
         Assert.True(result.Success, result.Error);
         var command = Assert.IsType<ScanCommand>(result.Command);
         Assert.Equal("MINILAB\\alice", command.Username);
-        Assert.True(command.PromptForPassword);
+    }
+
+    [Theory]
+    [InlineData("-p")]
+    [InlineData("--password")]
+    [InlineData("--passwd")]
+    public void ScanArguments_RejectPasswordOptions(string option)
+    {
+        var result = CliArgumentParser.Parse(
+        [
+            "scan",
+            "--target", "dc01.mini.lab",
+            "--output", "audit.dogad",
+            "-u", "MINILAB\\alice",
+            option
+        ]);
+
+        Assert.False(result.Success);
+        Assert.Contains("not supported", result.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("hidden interactive prompt", result.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
     [InlineData("-p", "SECRET_CANARY")]
     [InlineData("--password", "SECRET_CANARY")]
-    public void ScanArguments_RejectPasswordValueAfterPromptSwitchWithoutEchoingIt(
+    public void ScanArguments_RejectPasswordOptionWithoutEchoingFollowingSecret(
         string option,
         string secret)
     {
@@ -71,7 +88,6 @@ public sealed class CliTests
 
         Assert.False(result.Success);
         Assert.DoesNotContain(secret, result.Error ?? string.Empty, StringComparison.Ordinal);
-        Assert.Contains("hidden interactive prompt", result.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -93,27 +109,19 @@ public sealed class CliTests
     }
 
     [Fact]
-    public void ScanArguments_RequireUsernameAndPromptTogether()
+    public void ScanArguments_RejectIpTargetWithExplicitNegotiateCredential()
     {
-        var usernameOnly = CliArgumentParser.Parse(
+        var result = CliArgumentParser.Parse(
         [
             "scan",
-            "--target", "dc01.mini.lab",
+            "--target", "192.168.57.30",
             "--output", "audit.dogad",
             "-u", "MINILAB\\alice"
         ]);
-        var promptOnly = CliArgumentParser.Parse(
-        [
-            "scan",
-            "--target", "dc01.mini.lab",
-            "--output", "audit.dogad",
-            "-p"
-        ]);
 
-        Assert.False(usernameOnly.Success);
-        Assert.False(promptOnly.Success);
-        Assert.Contains("requires -p", usernameOnly.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("requires -u", promptOnly.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.False(result.Success);
+        Assert.Contains("DNS hostname", result.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("IP address", result.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
