@@ -37,7 +37,8 @@ Current phase is defensive/read-only. Do not add exploitation, credential dumpin
 - xUnit v3 + GitHub Actions
 - `DogfighterAD.Domain`: canonical model only
 - `DogfighterAD.Application`: planning/execution/assembly/profiles/telemetry
-- `DogfighterAD.Collectors.ActiveDirectory`: read-only LDAP + SYSVOL collection
+- `DogfighterAD.Collectors.ActiveDirectory`: read-only LDAP + SYSVOL collection and parent-side scope/normalization policy
+- `DogfighterAD.SysvolWorker`: internal disposable helper process for filesystem/SMB lifetime isolation; not a service and not a security sandbox
 - `DogfighterAD.Serialization`: deterministic `.dogad` outer artifact
 
 ## Implemented foundation
@@ -51,6 +52,7 @@ Current phase is defensive/read-only. Do not add exploitation, credential dumpin
 - streaming paged read-only LDAP transport;
 - DACL-only descriptor collection/parsing;
 - read-only SYSVOL abstraction with source-scope validation, per-file/count limits and bounded maxBytes+1 streaming reads;
+- blocking SYSVOL filesystem operations isolated in a disposable helper process with per-operation deadlines, forced process-tree termination and restart after timeout/cancellation;
 - deterministic `.dogad v1` writer/reader with manifest, SHA-256, canonical JSON checks, size limits and strict entry allowlist.
 
 ## Implemented capabilities
@@ -70,7 +72,7 @@ Current phase is defensive/read-only. Do not add exploitation, credential dumpin
 
 `gpo.sysvol` never persists cpassword itself. Arbitrary Registry.pol string/binary payloads are metadata-only; suspicious INI secret values are redacted. Unknown files are inventory/hash evidence, not assumed understood settings.
 
-SYSVOL scope hardening landed in `946c864d8f7431a80fee315b95a05be2d64424d5`: local/device paths, unrelated authorities/shares/domains, traversal roots and enumerated children outside the approved policy root are rejected before reads. The domain DFS authority and current collection target are approved automatically; alternate DC/referral authorities are explicit configuration. File content is read with a maxBytes+1 detection budget so a growing/underreported stream cannot allocate unbounded content before rejection. GitHub Actions run `34013964260` passed on Linux and Windows. This does not by itself prove real DFS/referral behavior against AD.
+SYSVOL scope and resource hardening is now split across explicit parent policy and a lifecycle-isolated filesystem helper. Commit `946c864d8f7431a80fee315b95a05be2d64424d5` added approved root/authority/child validation before reads and maxBytes+1 bounded streaming. Commits `76def69e30c7330827c1a771ba7da7ceb40f5f1f` and `0e2490b3c2a0dd42f80b399c5c4de24ce57c7854` moved blocking directory/file primitives behind `DogfighterAD.SysvolWorker`, with timeout/cancellation terminating the worker process tree and later operations restarting it. GitHub Actions run `34014520656` passed on Linux and Windows with 111 tests and no failures/skips. This is lifecycle isolation, not a privilege sandbox, and it does not by itself prove real DFS/referral behavior against AD.
 
 ## Profiles
 
@@ -86,7 +88,7 @@ SHA-256 is integrity detection, not an authenticity signature. Current implement
 
 ## Still pending before auditor-facing Collection Core is trusted
 
-- a hard lifecycle/deadline boundary for blocking filesystem operations that do not observe cooperative cancellation;
+- a runnable composition/CLI path for target/profile/output with running-identity authentication and explicit scope;
 - live `audit-full -> AdSnapshot -> .dogad -> offline read` integration against MINILAB/GOAD;
 - LDAP request/page counting and query/resource benchmarks;
 - peak-memory measurement, especially `.dogad` serialization;
@@ -95,8 +97,8 @@ SHA-256 is integrity detection, not an authenticity signature. Current implement
 
 ## Immediate next work
 
-0. Close the remaining blocking-filesystem I/O deadline/resource-lifecycle blocker from the [foundation review](reviews/2026-09-06-foundation-review.md). Do not fake a hard timeout with `Task.WhenAny` while leaving unbounded background I/O alive; prove termination/drain/resource cleanup with controlled fixtures. SYSVOL source-scope validation and streaming byte-budget gaps are already closed by `946c864d8f7431a80fee315b95a05be2d64424d5`, with Linux/Windows CI green.
-1. Build the live MINILAB/GOAD integration harness and first end-to-end audit-full snapshot/artifact round trip.
+0. Build a small CLI/composition layer: target/profile/output, explicit scope, running-identity authentication, Ctrl+C cancellation, structured exit statuses and coverage summary. Keep credentials out of command-line arguments, artifacts and logs.
+1. Use that path for the first live integration: run `minimal`, then `audit-full`, assemble `AdSnapshot`, write `.dogad` and read it back offline against MINILAB/GOAD. Record exact build/fixture state and known object/member/GPO counts.
 2. Instrument LDAP request/page counts and benchmark query volume/duration/peak memory.
 3. Harden partial-access/referral/SYSVOL behavior from real lab observations.
 4. Then implement Rule Engine: capability-version prerequisites, `NotVerified`, stable finding fingerprints, evidence references and deterministic rule-pack execution.

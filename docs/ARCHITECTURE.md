@@ -33,6 +33,14 @@ Orchestration: collector contracts, capability-driven planning, built-in profile
 
 Protocol/source-specific read-only collection: LDAP transport and paging, RootDSE/domain/users/groups/computers/OUs, range-aware memberships, trusts, DACL/ACE collection, GPO metadata/links, plus read-only SYSVOL enumeration and supported GPO policy parsers. It exposes no LDAP write API in the snapshot-first phase.
 
+The parent collector owns SYSVOL scope policy and normalized assessment semantics. It validates approved roots/authorities and every enumerated child before requesting file content.
+
+### `DogfighterAD.SysvolWorker`
+
+Internal killable runtime helper for filesystem operations that can block inside SMB/DFS/OS code and may not observe managed cancellation. It performs directory enumeration, file metadata access and file reads on behalf of the parent through a private bounded protocol.
+
+It is deliberately not a service, microservice, plugin host or security sandbox. It has no collection plan, capability semantics, normalization logic, findings, listener or persistent state. The parent keeps the policy decisions; the worker supplies a hard process-lifetime boundary so timeout/cancellation can terminate the process executing a stalled filesystem call. See ADR 0011.
+
 ### `DogfighterAD.Serialization`
 
 Outer portable-artifact layer. Depends on Domain only. Owns canonical snapshot ordering for external serialization, `.dogad` container/manifest versioning, deterministic ZIP/JSON representation, defensive read limits and integrity/canonicalization verification. See `DOGAD_FORMAT.md`.
@@ -54,6 +62,7 @@ Outer portable-artifact layer. Depends on Domain only. Owns canonical snapshot o
 13. Null/absent and empty DACLs remain distinguishable.
 14. Unsupported/malformed security semantics make coverage incomplete instead of being silently discarded.
 15. `.dogad` verifies payload integrity/schema/canonical representation, but SHA-256 is not an authenticity signature.
+16. Filesystem/SMB operations known to be potentially uninterruptible do not run directly in the long-lived collector process; their process lifetime is bounded and drained before the operation slot is released.
 
 ## Snapshot model
 
@@ -72,6 +81,8 @@ Ownership follows source/query shape rather than UI feature names. Users/groups/
 
 `gpo.sysvol v1` inventories/hash-evidences files but semantically normalizes only explicitly supported formats. It redacts/metadata-only handles potential secrets and never stores legacy `cpassword` values. Unknown files are not treated as understood policy.
 
+SYSVOL has two different containment layers. Parent-side path policy prevents out-of-scope reads/authentication attempts, while `DogfighterAD.SysvolWorker` bounds the lifetime of OS/filesystem operations after a path has been approved. Neither substitutes for the other.
+
 ## Portable artifact boundary
 
 `.dogad v1` is a strict deterministic ZIP containing `manifest.json` and canonical `snapshot.json`. Container version, serialization ID, snapshot schema version and capability contract versions are intentionally independent compatibility axes. Unknown entries are rejected in v1. The current implementation buffers the JSON payload, so peak-memory benchmarking on large domains is pending.
@@ -80,7 +91,7 @@ Ownership follows source/query shape rather than UI feature names. Users/groups/
 
 Collection Core now covers the default domain, core objects, memberships, local trust configuration, supported DACL semantics, GPO metadata/links/inheritance and supported read-only SYSVOL settings. It does not yet cover AD CS, full forest/multi-domain topology, all Group Policy extension semantics, every ACE family, endpoint RSoP/validation, LAPS/gMSA posture or broader host/protocol data.
 
-`.dogad v1` exists and supports offline transport/integrity verification, but live end-to-end MINILAB/GOAD integration, LDAP request/page accounting and large-domain memory benchmarks are still pending. Persistent SQLite storage, Rule Engine, graph analysis, diff/retest and reporting are not yet implemented.
+`.dogad v1` exists and supports offline transport/integrity verification. SYSVOL source scope, bounded content reads and blocking-I/O lifetime isolation have cross-platform regression coverage, but live end-to-end MINILAB/GOAD integration, real DFS/referral behavior, LDAP request/page accounting and large-domain memory benchmarks are still pending. Persistent SQLite storage, Rule Engine, graph analysis, diff/retest and reporting are not yet implemented.
 
 ## Future Validation Plane
 

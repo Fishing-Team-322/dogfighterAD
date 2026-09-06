@@ -38,6 +38,19 @@ Large `Subtree`/paged scans should use `SearchEntriesAsync` so the production LD
 
 Collectors may still build normalized snapshot collections in memory during the current foundation phase. Snapshot assembly/storage will later be benchmarked separately; the transport layer must not add a second avoidable full-result buffer.
 
+### SYSVOL filesystem lifetime boundary
+
+Production SYSVOL collection has two separate safety boundaries and both must remain intact:
+
+1. The parent collector validates the approved GPO root/authority and validates every enumerated child before asking for file content. Scope policy belongs in `DogfighterAD.Collectors.ActiveDirectory`, not in the helper process.
+2. Filesystem primitives that may block in SMB/DFS/OS code execute in `DogfighterAD.SysvolWorker`, a disposable helper process. Do not move recursive enumeration, `FileInfo` access or file opening back into the long-lived scanner process merely to reduce IPC/process overhead.
+
+`DogfighterAD.SysvolWorker` is an internal runtime component, not a microservice and not a security sandbox. It should contain filesystem mechanics only. It must not acquire planning, capability, normalization, finding or report responsibilities.
+
+The parent/worker protocol should remain private, bounded and diagnostic-safe: bounded frame sizes, bounded file content, generic error codes, no raw filesystem exception/source text crossing into persisted collection issues. On timeout or caller cancellation the parent terminates the worker process tree and waits for cleanup before releasing the operation slot. A later operation may start a fresh worker.
+
+Hosts using `SystemSysvolClientFactory` must deploy `DogfighterAD.SysvolWorker` beside the host executable or explicitly supply the worker executable path. Tests build/copy the worker so the process boundary is exercised on Windows and Linux. See ADR `0011-isolate-blocking-sysvol-filesystem-io.md`.
+
 ### Capability contract versions
 
 When a collector adds data that existing rules do not depend on, the capability version can normally remain unchanged.
@@ -78,6 +91,8 @@ Do not label a calculated possibility as actively confirmed.
 For every new foundation behavior, prefer tests before broad feature expansion.
 
 Current CI builds with warnings treated as errors and runs the core test suite on Windows and Linux/.NET 10. Use the executable test command documented in the [foundation review](reviews/2026-09-06-foundation-review.md). Protocol behavior that requires Windows or a real AD will get dedicated integration jobs later.
+
+The SYSVOL worker regression layer intentionally includes a deterministic blocked-operation fixture. It proves timeout -> worker termination -> subsequent worker restart without requiring a real stalled SMB server. This does not replace live DFS/referral/inaccessible-share tests.
 
 Planned test layers:
 

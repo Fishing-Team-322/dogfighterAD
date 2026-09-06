@@ -53,6 +53,8 @@ A collector returning a successful result after its timeout token was canceled w
 
 ## Open blockers and limitations
 
+The following sections record the blockers as they were identified during the review. See the follow-up status at the end for what was subsequently closed.
+
 ### P1: enforce the SYSVOL source boundary before network/file access
 
 Locations: `Collectors/GpoSysvolCollector.cs` and `Sysvol/SysvolContracts.cs` in `DogfighterAD.Collectors.ActiveDirectory`.
@@ -92,3 +94,17 @@ Required next change: bounded chunked reads that stop after at most maxBytes plu
 6. Add a small evidence-backed rule engine, capability prerequisites/NotVerified, JSON/HTML reporting and retest diff. Add graph projection when it answers a concrete audit question.
 
 Keep C#/.NET and the current module boundaries. There is no benchmark evidence that changing language or buying a powerful server would solve the present gaps. Measure directory I/O, normalization and artifact allocations before adding parallelism or a database. The first useful product milestone is a reproducible, scoped collection plus a few reliable findings, not feature parity with a large commercial platform.
+
+## Follow-up status - 2026-09-06
+
+The three SYSVOL blockers above were subsequently closed in the offline/cross-platform regression layer:
+
+- **Source boundary:** commit `946c864d8f7431a80fee315b95a05be2d64424d5` validates approved UNC authority/domain/share/GPO root before creating/using the SYSVOL client and re-validates enumerated child paths before file reads. Local/device paths, traversal, unrelated shares and unrelated authorities are rejected. Alternate authorities require explicit configuration.
+- **Streaming byte budget:** the same commit replaced unbounded `CopyToAsync` behavior with a maxBytes+1 detection budget. A deterministic underreported-length stream proves that a 16-byte limit reads no more than 17 bytes before rejection.
+- **Blocking filesystem lifetime:** commits `76def69e30c7330827c1a771ba7da7ceb40f5f1f` and `0e2490b3c2a0dd42f80b399c5c4de24ce57c7854` move directory enumeration, file metadata access and file opening/reading into the disposable `DogfighterAD.SysvolWorker` helper process. Timeout or caller cancellation terminates the worker process tree and drains it before the operation slot is released; a later operation starts a fresh worker.
+
+The worker boundary is intentionally a lifecycle boundary, not a privilege sandbox or a new service tier. Parent-side scope validation remains authoritative. ADR `0011-isolate-blocking-sysvol-filesystem-io.md` records the decision.
+
+GitHub Actions run `34014520656` for commit `0e2490b3c2a0dd42f80b399c5c4de24ce57c7854` passed build and unit tests on both Ubuntu and Windows. The suite contained 111 tests with no failures or skips. A controlled worker fixture intentionally blocks an operation, verifies the deadline/termination path and then verifies that the same client can perform a normal operation through a restarted worker.
+
+These results do **not** establish live AD/SMB/DFS correctness. The next evidence required is a runnable CLI/composition path followed by `minimal` and `audit-full -> AdSnapshot -> .dogad -> offline read` against MINILAB/GOAD, including real referral/inaccessible-share behavior, exact fixture/build recording and resource/query measurements.
