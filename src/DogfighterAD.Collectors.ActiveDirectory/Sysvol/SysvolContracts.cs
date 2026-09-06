@@ -228,16 +228,16 @@ internal sealed class SystemSysvolClient : IReadOnlySysvolClient
                         var frame = await ReadFrameAsync(operationToken).ConfigureAwait(false)
                             ?? throw new EndOfStreamException("SYSVOL worker exited during file read.");
 
-                        switch (frame.Value.Kind)
+                        switch (frame.Kind)
                         {
                             case SysvolWorkerFrameKind.Data:
-                                if ((long)output.Length + frame.Value.Payload.LongLength > maxBytes)
+                                if ((long)output.Length + frame.Payload.LongLength > maxBytes)
                                 {
                                     throw new InvalidDataException(
                                         "SYSVOL worker exceeded the parent read budget.");
                                 }
 
-                                output.Write(frame.Value.Payload, 0, frame.Value.Payload.Length);
+                                output.Write(frame.Payload, 0, frame.Payload.Length);
                                 break;
 
                             case SysvolWorkerFrameKind.Complete:
@@ -246,7 +246,7 @@ internal sealed class SystemSysvolClient : IReadOnlySysvolClient
 
                             case SysvolWorkerFrameKind.Error:
                                 throw CreateWorkerException(
-                                    SysvolWorkerProtocol.DeserializeError(frame.Value.Payload),
+                                    SysvolWorkerProtocol.DeserializeError(frame.Payload),
                                     fullPath,
                                     maxBytes);
 
@@ -308,11 +308,11 @@ internal sealed class SystemSysvolClient : IReadOnlySysvolClient
                                     ?? throw new EndOfStreamException(
                                         "SYSVOL worker exited during enumeration.");
 
-                                switch (frame.Value.Kind)
+                                switch (frame.Kind)
                                 {
                                     case SysvolWorkerFrameKind.Entry:
                                         var entry = SysvolWorkerProtocol.DeserializeEntry(
-                                            frame.Value.Payload);
+                                            frame.Payload);
                                         await writer.WriteAsync(
                                                 new SysvolFileEntry
                                                 {
@@ -330,7 +330,7 @@ internal sealed class SystemSysvolClient : IReadOnlySysvolClient
 
                                     case SysvolWorkerFrameKind.Error:
                                         throw CreateWorkerException(
-                                            SysvolWorkerProtocol.DeserializeError(frame.Value.Payload),
+                                            SysvolWorkerProtocol.DeserializeError(frame.Payload),
                                             rootPath,
                                             maxBytes: null);
 
