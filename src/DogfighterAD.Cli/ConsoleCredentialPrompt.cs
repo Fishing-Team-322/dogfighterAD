@@ -5,7 +5,7 @@ namespace DogfighterAD.Cli;
 
 internal static class ConsoleCredentialPrompt
 {
-    public static async Task<NetworkCredential> ReadNetworkCredentialAsync(
+    public static async Task<PromptedNetworkCredential> ReadNetworkCredentialAsync(
         string username,
         TextWriter promptWriter,
         CancellationToken cancellationToken)
@@ -23,7 +23,7 @@ internal static class ConsoleCredentialPrompt
         promptWriter.Write($"LDAP password for {username}: ");
         promptWriter.Flush();
 
-        using var password = new SecureString();
+        var password = new SecureString();
         try
         {
             while (true)
@@ -59,21 +59,25 @@ internal static class ConsoleCredentialPrompt
 
                 password.AppendChar(key.KeyChar);
             }
+
+            password.MakeReadOnly();
+            var (accountName, domain) = SplitAccountName(username);
+            var credential = domain is null
+                ? new NetworkCredential(accountName, password)
+                : new NetworkCredential(accountName, password, domain);
+
+            return new PromptedNetworkCredential(credential, password);
+        }
+        catch
+        {
+            password.Dispose();
+            throw;
         }
         finally
         {
             promptWriter.WriteLine();
             promptWriter.Flush();
         }
-
-        password.MakeReadOnly();
-        var retainedPassword = password.Copy();
-        retainedPassword.MakeReadOnly();
-
-        var (accountName, domain) = SplitAccountName(username);
-        return domain is null
-            ? new NetworkCredential(accountName, retainedPassword)
-            : new NetworkCredential(accountName, retainedPassword, domain);
     }
 
     internal static (string AccountName, string? Domain) SplitAccountName(string username)
@@ -87,5 +91,30 @@ internal static class ConsoleCredentialPrompt
         }
 
         return (username[(separator + 1)..], username[..separator]);
+    }
+}
+
+internal sealed class PromptedNetworkCredential : IDisposable
+{
+    private readonly SecureString _password;
+    private bool _disposed;
+
+    public PromptedNetworkCredential(NetworkCredential credential, SecureString password)
+    {
+        Credential = credential ?? throw new ArgumentNullException(nameof(credential));
+        _password = password ?? throw new ArgumentNullException(nameof(password));
+    }
+
+    public NetworkCredential Credential { get; }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _password.Dispose();
+        _disposed = true;
     }
 }
