@@ -9,6 +9,8 @@ internal sealed record ScanCommand : CliCommand
     public string Profile { get; init; } = "minimal";
     public bool UseLdaps { get; init; }
     public int? LdapPort { get; init; }
+    public string? Username { get; init; }
+    public bool PromptForPassword { get; init; }
     public IReadOnlySet<string> ApprovedSysvolAuthorities { get; init; } =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 }
@@ -31,10 +33,7 @@ internal static class CliArgumentParser
     private static readonly IReadOnlySet<string> ProhibitedCredentialOptions =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "--password",
             "--passwd",
-            "--username",
-            "--user",
             "--credential",
             "--credentials"
         };
@@ -66,6 +65,8 @@ internal static class CliArgumentParser
         var profile = "minimal";
         var useLdaps = false;
         int? ldapPort = null;
+        string? username = null;
+        var promptForPassword = false;
         var authorities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (var index = 0; index < args.Count; index++)
@@ -76,12 +77,14 @@ internal static class CliArgumentParser
                 return new CliParseResult(null, ShowHelp: true, Error: null);
             }
 
+            if (LooksLikeInlinePassword(token))
+            {
+                return PasswordValueRejected();
+            }
+
             if (ProhibitedCredentialOptions.Contains(token))
             {
-                return new CliParseResult(
-                    null,
-                    ShowHelp: false,
-                    Error: "Credential values are intentionally not accepted as command-line arguments. Use the current operating-system security context.");
+                return PasswordValueRejected();
             }
 
             switch (token)
@@ -125,6 +128,24 @@ internal static class CliArgumentParser
                     ldapPort = parsedPort;
                     break;
 
+                case "-u":
+                case "--username":
+                case "--user":
+                    if (!TryReadValue(args, ref index, out username))
+                    {
+                        return MissingValue(token);
+                    }
+                    break;
+
+                case "-p":
+                case "--password":
+                    if (index + 1 < args.Count && !IsOptionToken(args[index + 1]))
+                    {
+                        return PasswordValueRejected();
+                    }
+                    promptForPassword = true;
+                    break;
+
                 case "--sysvol-authority":
                     if (!TryReadValue(args, ref index, out var authority))
                     {
@@ -154,6 +175,22 @@ internal static class CliArgumentParser
             return new CliParseResult(null, false, "scan output must use the .dogad extension.");
         }
 
+        if (username is not null && !promptForPassword)
+        {
+            return new CliParseResult(
+                null,
+                false,
+                "-u/--username requires -p/--password so the LDAP password is read from a hidden interactive prompt.");
+        }
+
+        if (promptForPassword && string.IsNullOrWhiteSpace(username))
+        {
+            return new CliParseResult(
+                null,
+                false,
+                "-p/--password requires -u/--username <DOMAIN\\user|user@domain>.");
+        }
+
         return new CliParseResult(
             new ScanCommand
             {
@@ -162,6 +199,8 @@ internal static class CliArgumentParser
                 Profile = profile,
                 UseLdaps = useLdaps,
                 LdapPort = ldapPort,
+                Username = username,
+                PromptForPassword = promptForPassword,
                 ApprovedSysvolAuthorities = authorities
             },
             ShowHelp: false,
@@ -210,7 +249,9 @@ internal static class CliArgumentParser
         ref int index,
         out string value)
     {
-        if (index + 1 >= args.Count || string.IsNullOrWhiteSpace(args[index + 1]))
+        if (index + 1 >= args.Count ||
+            string.IsNullOrWhiteSpace(args[index + 1]) ||
+            IsOptionToken(args[index + 1]))
         {
             value = string.Empty;
             return false;
@@ -223,6 +264,20 @@ internal static class CliArgumentParser
 
     private static CliParseResult MissingValue(string option) =>
         new(null, ShowHelp: false, Error: $"Option '{option}' requires a value.");
+
+    private static CliParseResult PasswordValueRejected() =>
+        new(
+            null,
+            ShowHelp: false,
+            Error: "Password values are never accepted in command-line arguments. Use -u/--username with -p/--password to enter the LDAP password in a hidden interactive prompt.");
+
+    private static bool LooksLikeInlinePassword(string token) =>
+        token.StartsWith("--password=", StringComparison.OrdinalIgnoreCase) ||
+        token.StartsWith("--passwd=", StringComparison.OrdinalIgnoreCase) ||
+        (token.Length > 2 && token.StartsWith("-p", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsOptionToken(string value) =>
+        value.StartsWith('-', StringComparison.Ordinal);
 
     private static bool IsHelp(string value) =>
         string.Equals(value, "--help", StringComparison.OrdinalIgnoreCase) ||
