@@ -1,6 +1,7 @@
 using System.DirectoryServices.Protocols;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using DogfighterAD.Application.Contracts;
 
 namespace DogfighterAD.Collectors.ActiveDirectory.Ldap;
 
@@ -14,7 +15,7 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
         ValidateOptions(_options);
     }
 
-    public ValueTask<IReadOnlyLdapClient> CreateAsync(
+    public async ValueTask<IReadOnlyLdapClient> CreateAsync(
         string target,
         CancellationToken cancellationToken)
     {
@@ -27,12 +28,82 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
             : new LdapConnection(identifier, _options.Credential, AuthType.Negotiate);
 
         connection.AuthType = AuthType.Negotiate;
+        connection.AutoBind = false;
         connection.Timeout = _options.RequestTimeout;
         connection.SessionOptions.ProtocolVersion = 3;
         connection.SessionOptions.SecureSocketLayer = _options.UseLdaps;
 
-        return ValueTask.FromResult<IReadOnlyLdapClient>(
-            new SystemLdapClient(connection, _options.RequestTimeout));
+        await BindAsync(connection, cancellationToken).ConfigureAwait(false);
+        return new SystemLdapClient(connection, _options.RequestTimeout);
+    }
+
+    private async Task BindAsync(
+        LdapConnection connection,
+        CancellationToken cancellationToken)
+    {
+        // WLDAP32 Negotiate bind is synchronous even when the later request uses
+        // BeginSendRequest. Keep it off the collector/orchestration thread and enforce an
+        // external timeout so DNS/SPN/authentication stalls cannot freeze the scan.
+        var bindTask = Task.Run(
+            () => connection.Bind(),
+            CancellationToken.None);
+        ObserveBackgroundFault(bindTask);
+
+        try
+        {
+            await bindTask
+                .WaitAsync(_options.RequestTimeout, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException exception)
+        {
+            DisposeAfterCompletion(connection, bindTask);
+            throw new CollectorOperationalException(
+                "collection.ldap.bind-timeout",
+                $"LDAP Negotiate bind did not complete within {_options.RequestTimeout}. Verify DC name resolution, domain/SPN reachability and authentication prerequisites.",
+                exception);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            DisposeAfterCompletion(connection, bindTask);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            TryDispose(connection);
+            throw LdapFailureClassifier.Create(exception);
+        }
+    }
+
+    private static void ObserveBackgroundFault(Task task)
+    {
+        _ = task.ContinueWith(
+            static completedTask => _ = completedTask.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
+    }
+
+    private static void DisposeAfterCompletion(LdapConnection connection, Task operationTask)
+    {
+        _ = operationTask.ContinueWith(
+            static (_, state) => TryDispose((LdapConnection)state!),
+            connection,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private static void TryDispose(LdapConnection connection)
+    {
+        try
+        {
+            connection.Dispose();
+        }
+        catch (Exception)
+        {
+            // Cleanup must never replace the safe operational error already selected for output.
+        }
     }
 
     private static void ValidateOptions(LdapClientOptions options)
