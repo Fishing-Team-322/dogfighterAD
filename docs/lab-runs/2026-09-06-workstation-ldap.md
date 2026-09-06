@@ -8,6 +8,8 @@ Baseline: `f537c1c` from the user's `Z:\vs\dogfighterAD` checkout. Scanner host:
 - The original published CLI reproduced setup timeouts: RootDSE completed, but directory-object/domain-metadata collectors timed out after 15 seconds. The user had also observed an earlier RootDSE setup timeout.
 - A diagnostic build localized another stalled run to the directory search after successful binds. Increasing the timeout was not used as the remedy.
 - Setting `LdapSessionOptions.ReferralChasing = None` before binding allowed the same CLI invocation to complete. The clean fixed build then passed three consecutive fresh-process minimal scans with identical counts and no coverage issues.
+- For the later SYSVOL prerequisite check, the workstation used narrow hosts-file entries for `dc.mini.lab` and `mini.lab`, both mapped to `192.168.57.30`. This left the workstation's normal DNS server configuration unchanged.
+- With that narrow name mapping, `mini.lab` resolved to `192.168.57.30` and TCP/445 succeeded from source `192.168.57.1` on the Host-Only adapter. This establishes name resolution and SMB transport reachability only; SMB authentication and SYSVOL read access still require separate validation.
 
 ## Change and scope
 
