@@ -68,15 +68,24 @@ If LDAP credentials are needed from the workstation, use the hidden prompt form:
 
 The password prompt is automatic after `-u`. Do not add `-p`, `--password` or any password value to the command line.
 
+After the password is accepted by the local prompt, the current CLI prints:
+
+```text
+Starting collection: target=dc.mini.lab profile=minimal collector-timeout=00:02:00.
+```
+
+If this marker never appears, investigate console/prompt handling. If it appears and the scan then waits, the problem is in collection/transport rather than password entry.
+
 For an `audit-full` remote run, the LDAP prompt does not create the SMB session. Establish the authorized Windows network context separately (for example a controlled `runas /netonly` shell or an explicit Windows SMB session appropriate to the isolated lab) and then run DogfighterAD from that context.
 
 ### Interpreting collection failures
 
 The CLI prints sanitized issue details beneath affected capability rows. Record the issue **code and message**, not only `Failed`/`Partial`.
 
-Known LDAP operational failures are classified without persisting raw server/exception text. Expected examples include:
+Known LDAP operational failures include:
 
 - `collection.ldap.authentication-failed`
+- `collection.ldap.bind-timeout`
 - `collection.ldap.server-unavailable`
 - `collection.ldap.timeout`
 - `collection.ldap.security-required`
@@ -84,7 +93,11 @@ Known LDAP operational failures are classified without persisting raw server/exc
 
 Numeric LDAP/result codes may be included in the safe message. Do not infer a bad password from a generic collector failure; use the actual emitted issue classification.
 
-The production LDAP connection has a 30-second connection/request timeout in addition to the profile collector timeout. A scan that does not return within the expected outer collector boundary is itself a live defect to record.
+The production LDAP path disables auto-bind and performs the synchronous native Negotiate bind on an isolated task. DogfighterAD stops waiting for that bind after the configured LDAP timeout (currently 30 seconds) and reports `collection.ldap.bind-timeout` if the native call has not returned. LDAP requests retain their own timeout.
+
+The profile collector timeout is an additional outer boundary. Collection execution is isolated so even a collector that blocks synchronously before returning a `Task` cannot hold the orchestration thread past that boundary. A native OS LDAP call may remain on its isolated background thread until Windows itself returns it; this is containment rather than a claim that WLDAP32 native calls are forcibly cancellable.
+
+A scan that still does not return beyond these documented boundaries is a new live defect and must be recorded with the exact build and last visible output.
 
 ## 2. Build the exact commit
 
@@ -228,6 +241,8 @@ Recommended cases:
 10. Explicit LDAP username with no SMB network context -> minimal may succeed while `gpo.sysvol` remains incomplete; record the distinction.
 11. Explicit LDAP username with an IP-literal target -> parser must reject it immediately with an invalid-arguments result instead of entering Negotiate/network collection.
 12. Wrong explicit LDAP credential in the lab -> expect a sanitized authentication issue (typically `collection.ldap.authentication-failed`) and no credential text in output/artifact.
+13. Stalled explicit Negotiate bind -> expect `collection.ldap.bind-timeout` after the LDAP timeout instead of an indefinitely silent scan.
+14. Synthetic collector that blocks synchronously before returning its Task -> executor regression must produce `collection.collector.timeout` at the profile boundary.
 
 For every case record the capability status and issue code/message, not just the process exit or generic console text.
 
