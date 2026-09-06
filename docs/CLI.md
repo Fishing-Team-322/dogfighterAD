@@ -56,6 +56,8 @@ This preserves the project invariant that credential secrets must not appear in 
 
 Explicit LDAP credentials require a **DNS hostname target**. An IP literal together with `-u` is rejected before prompting/collection. Use a resolvable DC FQDN (for example `dc.mini.lab`).
 
+For the explicit-credential path, DogfighterAD also marks that FQDN as the **exact named LDAP server** when constructing `LdapDirectoryIdentifier` (`fullyQualifiedDnsHostName: true`, TCP/connectionless false). This is intentional: Windows LDAP otherwise may treat a supplied host-like name as something to rediscover and perform extra locator/name-resolution work before connecting. The current-OS-context path retains the older discovery-capable identifier semantics because `--target` may legitimately be a domain rather than a specific DC.
+
 ### LDAP setup and timeout boundaries
 
 `System.DirectoryServices.Protocols` can enter synchronous native Windows LDAP code while creating/configuring the connection or performing authentication, before an asynchronous request is available to await. DogfighterAD therefore places the **complete native LDAP connection/setup/bind boundary** on an isolated task and applies a separate external bind/setup deadline.
