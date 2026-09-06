@@ -6,7 +6,16 @@ Do not introduce broad detection rules until this path has been completed and di
 
 ## 1. Preconditions
 
-Use an assessment identity authorized for read-only directory/SYSVOL access. DogfighterAD uses the current operating-system security context; do not place passwords in CLI arguments, scripts committed to the repository, `.dogad` artifacts or logs.
+Use an assessment identity authorized for read-only directory/SYSVOL access. DogfighterAD must not place passwords in CLI arguments, scripts committed to the repository, `.dogad` artifacts or logs.
+
+LDAP authentication has two supported execution modes:
+
+- current operating-system security context; or
+- explicit LDAP username plus hidden password prompt using `-u <DOMAIN\user|user@domain> -p`.
+
+`-p` is a prompt switch. It never accepts the password as an argument value.
+
+Explicit CLI credentials currently apply to LDAP only. SYSVOL/SMB still uses the operating-system network security context because the isolated worker uses Windows filesystem/SMB APIs.
 
 Prefer a Windows test host for the first `audit-full` run because SYSVOL/SMB behavior is a primary validation target. The collection code itself remains cross-platform tested where practical.
 
@@ -26,6 +35,40 @@ Known expected object counts or planted objects:
 Known expected GPOs/trusts/memberships:
 ```
 
+### Remote Windows workstation preflight
+
+When DogfighterAD runs on a workstation outside the MINILAB domain, prove network naming and transport before interpreting collection failures:
+
+```powershell
+Resolve-DnsName dc.mini.lab
+Test-NetConnection dc.mini.lab -Port 389
+Test-NetConnection dc.mini.lab -Port 445
+```
+
+A credential cannot repair DNS or routing. If `Resolve-DnsName` fails, fix the workstation's path to the lab DNS/DC first (or use a controlled temporary name-resolution configuration appropriate to the isolated lab).
+
+For `audit-full`, also prove the exact SYSVOL authority returned by AD is reachable through the same OS network context:
+
+```powershell
+Get-ChildItem '\\mini.lab\sysvol\mini.lab\Policies' |
+  Select-Object -First 5 Name
+```
+
+If LDAP credentials are needed from the workstation, use the hidden prompt form:
+
+```powershell
+./dogfighter scan `
+  --target dc.mini.lab `
+  --profile minimal `
+  -u 'MINILAB\alice' `
+  -p `
+  --output .\lab-artifacts\mini-minimal-remote.dogad
+```
+
+Do not use `-p <password>` or `--password=<password>`; those forms are intentionally rejected.
+
+For an `audit-full` remote run, the LDAP prompt does not create the SMB session. Establish the authorized Windows network context separately (for example a controlled `runas /netonly` shell) and then run DogfighterAD from that context.
+
 ## 2. Build the exact commit
 
 ```powershell
@@ -35,6 +78,18 @@ dotnet build src/DogfighterAD.Cli/DogfighterAD.Cli.csproj -c Release --no-restor
 ```
 
 Use the executable from the `Release/net10.0` CLI output. Confirm `DogfighterAD.SysvolWorker` and its runtime files are present beside it before `audit-full`.
+
+For a self-contained Windows deployment, use:
+
+```powershell
+dotnet publish src/DogfighterAD.Cli/DogfighterAD.Cli.csproj `
+  -c Release `
+  -r win-x64 `
+  --self-contained true `
+  -o C:\DogfighterBuild
+```
+
+The publish output must contain the complete worker runtime set, not only `DogfighterAD.SysvolWorker.exe`.
 
 ## 3. Minimal collection first
 
@@ -152,6 +207,8 @@ Recommended cases:
 6. Large/ranged group membership -> verify range retrieval and final member count.
 7. LDAP cancellation (Ctrl+C) -> no successful final artifact should be published as if complete.
 8. Referral/inaccessible naming-context fixture when available -> capture actual current behavior before hardening it.
+9. Remote workstation DNS failure -> collection must fail/partial rather than being misdiagnosed as an authentication problem.
+10. Explicit LDAP prompt credential with no SMB network context -> minimal may succeed while `gpo.sysvol` remains incomplete; record the distinction.
 
 For every case record the capability status and issue code, not just console text.
 
