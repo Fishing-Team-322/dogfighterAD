@@ -309,7 +309,7 @@ public sealed class CollectionExecutor
         }
 
         var returnedCapabilities = result.Fragment.Coverage
-            .Select(x => x.CapabilityId, StringComparer.Ordinal)
+            .Select(x => x.CapabilityId)
             .ToHashSet(StringComparer.Ordinal);
 
         if (planned.SelectedCapabilities.Any(capability => !returnedCapabilities.Contains(capability)))
