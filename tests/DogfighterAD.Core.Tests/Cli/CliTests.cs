@@ -30,26 +30,104 @@ public sealed class CliTests
         Assert.Equal("audit-full", command.Profile);
         Assert.True(command.UseLdaps);
         Assert.Equal(636, command.LdapPort);
+        Assert.Null(command.Username);
+        Assert.False(command.PromptForPassword);
         Assert.Equal(2, command.ApprovedSysvolAuthorities.Count);
     }
 
+    [Fact]
+    public void ScanArguments_ParsePromptedLdapCredential()
+    {
+        var result = CliArgumentParser.Parse(
+        [
+            "scan",
+            "--target", "dc.mini.lab",
+            "--output", "audit.dogad",
+            "-u", "MINILAB\\alice",
+            "-p"
+        ]);
+
+        Assert.True(result.Success, result.Error);
+        var command = Assert.IsType<ScanCommand>(result.Command);
+        Assert.Equal("MINILAB\\alice", command.Username);
+        Assert.True(command.PromptForPassword);
+    }
+
     [Theory]
-    [InlineData("--password")]
-    [InlineData("--username")]
-    [InlineData("--credential")]
-    public void ScanArguments_RejectCredentialValues(string option)
+    [InlineData("-p", "SECRET_CANARY")]
+    [InlineData("--password", "SECRET_CANARY")]
+    public void ScanArguments_RejectPasswordValueAfterPromptSwitchWithoutEchoingIt(
+        string option,
+        string secret)
     {
         var result = CliArgumentParser.Parse(
         [
             "scan",
             "--target", "dc01.mini.lab",
             "--output", "audit.dogad",
-            option, "SECRET_CANARY"
+            "-u", "MINILAB\\alice",
+            option, secret
         ]);
 
         Assert.False(result.Success);
-        Assert.DoesNotContain("SECRET_CANARY", result.Error ?? string.Empty, StringComparison.Ordinal);
-        Assert.Contains("security context", result.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(secret, result.Error ?? string.Empty, StringComparison.Ordinal);
+        Assert.Contains("hidden interactive prompt", result.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ScanArguments_RejectInlinePasswordWithoutEchoingIt()
+    {
+        const string secret = "SECRET_CANARY";
+        var result = CliArgumentParser.Parse(
+        [
+            "scan",
+            "--target", "dc01.mini.lab",
+            "--output", "audit.dogad",
+            "-u", "MINILAB\\alice",
+            $"--password={secret}"
+        ]);
+
+        Assert.False(result.Success);
+        Assert.DoesNotContain(secret, result.Error ?? string.Empty, StringComparison.Ordinal);
+        Assert.Contains("hidden interactive prompt", result.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ScanArguments_RequireUsernameAndPromptTogether()
+    {
+        var usernameOnly = CliArgumentParser.Parse(
+        [
+            "scan",
+            "--target", "dc01.mini.lab",
+            "--output", "audit.dogad",
+            "-u", "MINILAB\\alice"
+        ]);
+        var promptOnly = CliArgumentParser.Parse(
+        [
+            "scan",
+            "--target", "dc01.mini.lab",
+            "--output", "audit.dogad",
+            "-p"
+        ]);
+
+        Assert.False(usernameOnly.Success);
+        Assert.False(promptOnly.Success);
+        Assert.Contains("requires -p", usernameOnly.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("requires -u", promptOnly.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("MINILAB\\alice", "alice", "MINILAB")]
+    [InlineData("alice@mini.lab", "alice@mini.lab", null)]
+    public void CredentialPrompt_SplitsDomainQualifiedNames(
+        string input,
+        string expectedAccount,
+        string? expectedDomain)
+    {
+        var result = ConsoleCredentialPrompt.SplitAccountName(input);
+
+        Assert.Equal(expectedAccount, result.AccountName);
+        Assert.Equal(expectedDomain, result.Domain);
     }
 
     [Fact]
