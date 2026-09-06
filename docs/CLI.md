@@ -68,6 +68,8 @@ Current production limits are:
 
 If the native connection/authentication setup does not complete within 15 seconds, the scan receives sanitized `collection.ldap.bind-timeout` evidence rather than intentionally waiting for that native call indefinitely. A native Windows call may still continue on its isolated background task until the OS returns it; any connection returned after the deadline is disposed instead of being reused.
 
+An explicit credential used by the isolated native setup is cloned into an operation-owned runtime credential lease before WLDAP32 is entered. This prevents a timed-out native setup task from depending on the shorter prompt-owned `SecureString` lifetime. The clone is disposed with the live LDAP client, or after a timed-out native setup eventually returns. This is a lifetime/cleanup guarantee only; it is not a claim that managed or native credential memory can be made universally non-copyable.
+
 LDAP requests retain their own request timeout. In addition, the collection executor invokes collectors outside the orchestration thread and waits with the profile-level collector timeout. That outer boundary covers collectors that block synchronously before returning their `Task`, not only well-behaved asynchronous collectors.
 
 After the hidden password prompt completes, `scan` prints the selected safe runtime mode and deadlines, for example:
@@ -77,6 +79,15 @@ Starting collection: target=dc.mini.lab profile=minimal ldap-auth=ntlm bind-time
 ```
 
 No username/password value is added to that marker. The marker distinguishes prompt/input problems from later LDAP collection problems and makes the expected timeout boundaries visible during live validation.
+
+The scanner also prints safe per-collector progress so a live wait has an exact boundary instead of appearing as an undifferentiated hang:
+
+```text
+[collection] start collector=ad.ldap.rootdse timeout=00:02:00
+[collection] failed collector=ad.ldap.rootdse issue=collection.ldap.bind-timeout elapsed=00:00:15.0
+```
+
+Progress lines contain only stable collector IDs, state, timeout/elapsed values and sanitized issue codes. They do not print credential values, LDAP source payloads or raw exception/server text. The final snapshot summary remains the authoritative place for capability status and the sanitized issue message.
 
 ### Important SYSVOL distinction
 
@@ -211,6 +222,7 @@ A `Partial` exit is deliberately non-zero. Incomplete collection must not be sil
 The CLI prints:
 
 - collection start marker after any credential prompt, including selected auth mode and timeout boundaries;
+- safe per-collector runtime progress (`start`, `done`, `failed`, `timeout`, `blocked`, `canceled`);
 - snapshot ID;
 - completion status;
 - profile;
