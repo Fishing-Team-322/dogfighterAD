@@ -277,7 +277,7 @@ internal static class CliArgumentParser
         (token.Length > 2 && token.StartsWith("-p", StringComparison.OrdinalIgnoreCase));
 
     private static bool IsOptionToken(string value) =>
-        value.StartsWith('-', StringComparison.Ordinal);
+        value.Length > 0 && value[0] == '-';
 
     private static bool IsHelp(string value) =>
         string.Equals(value, "--help", StringComparison.OrdinalIgnoreCase) ||
