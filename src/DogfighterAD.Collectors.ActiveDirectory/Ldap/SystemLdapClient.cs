@@ -62,7 +62,9 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
             DisposeReturnedSetupAfterCompletion(setupTask);
             throw new CollectorOperationalException(
                 "collection.ldap.bind-timeout",
-                $"LDAP connection/authentication setup did not complete within {_options.BindTimeout} (auth={_options.AuthenticationMode}). Verify target reachability and authentication prerequisites.",
+                $"LDAP connection/authentication setup did not complete within {_options.BindTimeout} " +
+                $"(auth={_options.AuthenticationMode}, fqdn-server-bind={_options.TreatTargetAsFullyQualifiedDnsHostName}). " +
+                "Verify target reachability and authentication prerequisites.",
                 exception);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -87,7 +89,10 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
         LdapConnection? connection = null;
         try
         {
-            var identifier = new LdapDirectoryIdentifier(target, _options.Port);
+            var identifier = CreateDirectoryIdentifier(
+                target,
+                _options.Port,
+                _options.TreatTargetAsFullyQualifiedDnsHostName);
             var authType = MapAuthenticationMode(_options.AuthenticationMode);
             connection = credentialLease is null
                 ? new LdapConnection(identifier)
@@ -112,6 +117,16 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
             throw LdapFailureClassifier.Create(exception);
         }
     }
+
+    internal static LdapDirectoryIdentifier CreateDirectoryIdentifier(
+        string target,
+        int port,
+        bool fullyQualifiedDnsHostName) =>
+        new(
+            target,
+            port,
+            fullyQualifiedDnsHostName,
+            connectionless: false);
 
     internal static AuthType MapAuthenticationMode(LdapAuthenticationMode authenticationMode) =>
         authenticationMode switch
