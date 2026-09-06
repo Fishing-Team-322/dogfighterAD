@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -141,6 +142,44 @@ public sealed class BoundaryRegressionTests
             SysvolBoundedReader.ReadAsync(stream, "synthetic", 16, cts.Token));
 
         Assert.Equal(0, stream.BytesRead);
+    }
+
+    [Fact]
+    public async Task SysvolWorker_TimeoutTerminatesBlockedOperationAndClientRestarts()
+    {
+        var token = TestContext.Current.CancellationToken;
+        const string blockedPath = "__dogfighterad_sysvol_worker_block__";
+        var environment = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["DOGFIGHTERAD_SYSVOL_WORKER_TEST_BLOCK"] = blockedPath
+        };
+        var factory = new SystemSysvolClientFactory(
+            SystemSysvolClientFactory.GetDefaultWorkerExecutablePath(),
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(2),
+            environment);
+        await using var client = await factory.CreateAsync(token);
+
+        var stopwatch = Stopwatch.StartNew();
+        await Assert.ThrowsAsync<SysvolIoTimeoutException>(async () =>
+        {
+            await foreach (var _ in client.EnumerateFilesAsync(blockedPath, token))
+            {
+            }
+        });
+        stopwatch.Stop();
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5));
+
+        var path = Path.Combine(Path.GetTempPath(), $"dogad-worker-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await File.WriteAllBytesAsync(path, [1, 2, 3, 4], token);
+            Assert.Equal([1, 2, 3, 4], await client.ReadFileAsync(path, 16, token));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Fact]
