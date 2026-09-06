@@ -50,7 +50,21 @@ This preserves the project invariant that credential secrets must not appear in 
 
 Explicit LDAP Negotiate credentials require a **DNS hostname target**. An IP literal together with `-u` is rejected before prompting/collection. This avoids ambiguous Kerberos/NTLM fallback behavior and the live-observed case where an explicit Negotiate scan by IP did not return promptly. Use a resolvable DC FQDN (for example `dc.mini.lab`).
 
-The production LDAP connection applies the configured 30-second LDAP connection timeout as well as the existing per-request timeout. Profile-level collector timeouts remain a separate outer safety boundary.
+### LDAP bind and timeout boundaries
+
+`System.DirectoryServices.Protocols` can enter a synchronous native Negotiate bind before an asynchronous LDAP request is available to await. DogfighterAD therefore disables LDAP auto-bind and performs an explicit bind on an isolated worker task. The bind has the configured LDAP timeout (currently 30 seconds) as an external boundary. A bind that does not complete in that interval returns a sanitized `collection.ldap.bind-timeout` issue to the scan rather than holding the orchestration path indefinitely.
+
+LDAP requests retain their own configured request timeout. In addition, the collection executor invokes collectors outside the orchestration thread and waits with the profile-level collector timeout. That outer boundary covers collectors that block synchronously before returning their `Task`, not only well-behaved asynchronous collectors.
+
+A native Windows LDAP call that ignores cancellation may continue on its isolated background thread until the OS call itself returns; the scan orchestration no longer waits indefinitely for that call. Cleanup of the affected LDAP connection is deferred until the native operation finishes.
+
+After the hidden password prompt completes, `scan` prints a start marker such as:
+
+```text
+Starting collection: target=dc.mini.lab profile=minimal collector-timeout=00:02:00.
+```
+
+This distinguishes a prompt/input problem from a later collection/bind problem.
 
 ### Important SYSVOL distinction
 
@@ -131,9 +145,18 @@ Collector failures are still evidence-first and do not persist raw exception/ser
     [Error] collection.ldap.authentication-failed: LDAP authentication failed (code=49/InvalidCredentials). Verify the supplied username/password and Negotiate prerequisites.
 ```
 
-LDAP diagnostics distinguish at least authentication failure, server/connection unavailability, timeout, stronger-authentication requirements and an unknown LDAP failure. Numeric LDAP/result codes are retained when safe. Raw `LdapException`/server error text and credential material are intentionally omitted.
+LDAP diagnostics distinguish at least:
 
-Unknown exceptions still fall back to `collection.collector.failed` rather than serializing arbitrary exception details.
+- `collection.ldap.authentication-failed`
+- `collection.ldap.bind-timeout`
+- `collection.ldap.server-unavailable`
+- `collection.ldap.timeout`
+- `collection.ldap.security-required`
+- `collection.ldap.failed`
+
+Numeric LDAP/result codes are retained when safe. Raw `LdapException`/server error text and credential material are intentionally omitted. Unknown exceptions still fall back to `collection.collector.failed` rather than serializing arbitrary exception details.
+
+The profile-level `collection.collector.timeout` remains a separate outer failure when any collector exceeds its profile budget, including synchronous pre-await blocking.
 
 ## Artifact commit behavior
 
@@ -175,6 +198,7 @@ A `Partial` exit is deliberately non-zero. Incomplete collection must not be sil
 
 The CLI prints:
 
+- collection start marker after any credential prompt;
 - snapshot ID;
 - completion status;
 - profile;
@@ -191,6 +215,7 @@ It does not print credential values or arbitrary exception/source payloads on th
 - The MINILAB minimal profile has been validated live and completed with the corrected binary SID transport; `audit-full` validation is continuing against observed ACL/GPO/SYSVOL issues.
 - Explicit `-u` credentials currently authenticate LDAP only; SYSVOL/SMB still uses the OS network security context.
 - Explicit Negotiate authentication requires a hostname target; IP literals with `-u` are rejected.
+- Native LDAP bind cancellation is containment-based: the scanner can stop waiting at the configured timeout, but a native OS call may remain on its isolated thread until the OS returns it.
 - Current collection is primarily default-domain scoped; broader forest/multi-domain work is later.
 - `inspect` is not the future `analyze` command. There is no Rule Engine yet.
 - LDAP request/page counters and peak-memory telemetry are still pending.
