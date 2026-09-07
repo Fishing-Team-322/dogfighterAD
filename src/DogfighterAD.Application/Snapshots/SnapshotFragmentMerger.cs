@@ -75,14 +75,8 @@ public sealed class SnapshotFragmentMerger
                 fragments.SelectMany(x => x.Content.SecurityDescriptors)),
             Aces = fragments
                 .SelectMany(x => x.Content.Aces)
-                .Distinct()
                 .OrderBy(x => x.TargetObjectId.Value)
-                .ThenBy(x => x.TrusteeSid, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(x => x.AccessType)
-                .ThenBy(x => x.AccessMask)
-                .ThenBy(x => x.ObjectType)
-                .ThenBy(x => x.InheritedObjectType)
-                .ThenBy(x => x.AceFlags)
+                .ThenBy(x => x.AceIndex)
                 .ToArray()
         };
     }
