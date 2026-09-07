@@ -9,6 +9,12 @@ internal enum SysvolWorkerOperation
     Read = 2
 }
 
+internal enum SysvolWorkerTransport
+{
+    SystemContext = 0,
+    PortableKerberos = 1
+}
+
 internal enum SysvolWorkerFrameKind : byte
 {
     Entry = 1,
@@ -32,6 +38,11 @@ internal sealed record SysvolWorkerRequest
     public required SysvolWorkerOperation Operation { get; init; }
     public required string Path { get; init; }
     public int MaxBytes { get; init; }
+    public SysvolWorkerTransport Transport { get; init; } = SysvolWorkerTransport.SystemContext;
+    public string? Server { get; init; }
+    public string? KerberosRealm { get; init; }
+    public string? KerberosUser { get; init; }
+    public string? KerberosPassword { get; init; }
 }
 
 internal sealed record SysvolWorkerEntry
