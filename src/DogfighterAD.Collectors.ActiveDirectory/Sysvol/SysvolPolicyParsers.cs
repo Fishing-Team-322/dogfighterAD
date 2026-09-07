@@ -9,7 +9,14 @@ namespace DogfighterAD.Collectors.ActiveDirectory.Sysvol;
 
 internal static class SysvolPolicyParsers
 {
-    private static readonly HashSet<string> SafePasswordPolicyKeys =
+    private static readonly HashSet<string> SafeGptIniKeys =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Version",
+            "displayName"
+        };
+
+    private static readonly HashSet<string> SafeSystemAccessKeys =
         new(StringComparer.OrdinalIgnoreCase)
         {
             "MinimumPasswordAge",
@@ -18,7 +25,27 @@ internal static class SysvolPolicyParsers
             "PasswordComplexity",
             "PasswordHistorySize",
             "ClearTextPassword",
-            "RequireLogonToChangePassword"
+            "RequireLogonToChangePassword",
+            "LockoutBadCount",
+            "ResetLockoutCount",
+            "LockoutDuration",
+            "ForceLogoffWhenHourExpire",
+            "NewAdministratorName",
+            "NewGuestName",
+            "EnableAdminAccount",
+            "EnableGuestAccount",
+            "LSAAnonymousNameLookup"
+        };
+
+    private static readonly HashSet<string> SafeWholeSecurityTemplateSections =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Event Audit",
+            "Privilege Rights",
+            "Group Membership",
+            "Kerberos Policy",
+            "Unicode",
+            "Version"
         };
 
     public static ParsedSettingsResult ParseGptIni(byte[] bytes, string relativePath) =>
@@ -58,8 +85,22 @@ internal static class SysvolPolicyParsers
                 }
 
                 ExpectUtf16Char(bytes, ref offset, '[');
-                var keyPath = ReadUtf16Field(bytes, ref offset, ';');
-                var valueName = ReadUtf16Field(bytes, ref offset, ';');
+                var keyPath = ReadNullTerminatedUtf16Field(bytes, ref offset);
+                ExpectUtf16Char(bytes, ref offset, ';');
+                var valueName = ReadNullTerminatedUtf16Field(bytes, ref offset);
+                ExpectUtf16Char(bytes, ref offset, ';');
+
+                // v1 has no explicit typed representation for a Registry.pol record with an empty
+                // value name. Reject it at the parser boundary instead of constructing a setting
+                // that the snapshot invariant validator will later reject and thereby losing the
+                // entire scan artifact. A future model can add a dedicated operation/identity when
+                // its protocol semantics are deliberately supported.
+                if (valueName.Length == 0)
+                {
+                    return ParsedSettingsResult.Failed(
+                        $"Registry.pol record {sequence + 1} has an empty value name that is not supported by v1.");
+                }
+
                 var type = ReadUInt32(bytes, ref offset);
                 ExpectUtf16Char(bytes, ref offset, ';');
                 var size = ReadUInt32(bytes, ref offset);
@@ -199,9 +240,7 @@ internal static class SysvolPolicyParsers
 
             var key = line[..separator].Trim();
             var value = line[(separator + 1)..].Trim();
-            var disposition = ShouldRedactIniValue(key)
-                ? FactDisposition.Redacted
-                : FactDisposition.Stored;
+            var disposition = DetermineIniDisposition(kind, section, key);
 
             settings.Add(new ParsedSetting
             {
@@ -221,9 +260,43 @@ internal static class SysvolPolicyParsers
         return ParsedSettingsResult.Succeeded(settings);
     }
 
-    private static bool ShouldRedactIniValue(string key)
+    private static FactDisposition DetermineIniDisposition(
+        GpoSettingKind kind,
+        string section,
+        string key)
     {
-        if (SafePasswordPolicyKeys.Contains(key))
+        if (LooksSensitiveKey(key))
+        {
+            return FactDisposition.Redacted;
+        }
+
+        if (kind == GpoSettingKind.Ini)
+        {
+            return SafeGptIniKeys.Contains(key)
+                ? FactDisposition.Stored
+                : FactDisposition.MetadataOnly;
+        }
+
+        if (kind != GpoSettingKind.SecurityTemplate)
+        {
+            return FactDisposition.MetadataOnly;
+        }
+
+        if (section.Equals("System Access", StringComparison.OrdinalIgnoreCase))
+        {
+            return SafeSystemAccessKeys.Contains(key)
+                ? FactDisposition.Stored
+                : FactDisposition.MetadataOnly;
+        }
+
+        return SafeWholeSecurityTemplateSections.Contains(section)
+            ? FactDisposition.Stored
+            : FactDisposition.MetadataOnly;
+    }
+
+    private static bool LooksSensitiveKey(string key)
+    {
+        if (SafeSystemAccessKeys.Contains(key))
         {
             return false;
         }
@@ -235,7 +308,13 @@ internal static class SysvolPolicyParsers
             key.Equals("credential", StringComparison.OrdinalIgnoreCase) ||
             key.Equals("credentials", StringComparison.OrdinalIgnoreCase) ||
             key.Equals("cpassword", StringComparison.OrdinalIgnoreCase) ||
-            key.EndsWith("Password", StringComparison.OrdinalIgnoreCase);
+            key.Equals("apikey", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("api_key", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("token", StringComparison.OrdinalIgnoreCase) ||
+            key.EndsWith("Password", StringComparison.OrdinalIgnoreCase) ||
+            key.EndsWith("Secret", StringComparison.OrdinalIgnoreCase) ||
+            key.EndsWith("Token", StringComparison.OrdinalIgnoreCase) ||
+            key.EndsWith("ApiKey", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string DecodeText(byte[] bytes)
@@ -329,27 +408,24 @@ internal static class SysvolPolicyParsers
         return value;
     }
 
-    private static string ReadUtf16Field(byte[] bytes, ref int offset, char delimiter)
+    private static string ReadNullTerminatedUtf16Field(byte[] bytes, ref int offset)
     {
         var builder = new StringBuilder();
         while (true)
         {
             if (offset > bytes.Length - 2)
             {
-                throw new InvalidDataException("Registry.pol ended inside a UTF-16 field.");
+                throw new InvalidDataException("Registry.pol ended inside a NUL-terminated UTF-16 field.");
             }
 
             var character = (char)BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(offset, 2));
             offset += 2;
-            if (character == delimiter)
+            if (character == '\0')
             {
-                return builder.ToString().TrimEnd('\0');
+                return builder.ToString();
             }
 
-            if (character != '\0')
-            {
-                builder.Append(character);
-            }
+            builder.Append(character);
         }
     }
 
