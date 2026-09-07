@@ -1,28 +1,24 @@
 # MINILAB / GOAD live collection runbook
 
-This runbook is the first live validation path for the current Collection Core. It is deliberately evidence-oriented: a successful process exit is not enough. Record the exact build, lab state, expected facts, actual counts, coverage and artifact readback result.
+This runbook is the live validation path for the current Collection Core. A successful process exit is not enough: record the exact build, lab state, expected facts, actual counts, capability coverage and artifact readback result.
 
-Do not introduce broad detection rules until this path has been completed and discrepancies have been understood.
+Do not introduce broad detection rules until this collection path is understood and reproducible.
 
 ## 1. Preconditions
 
 Use an assessment identity authorized for read-only directory/SYSVOL access. DogfighterAD must not place passwords in CLI arguments, scripts committed to the repository, `.dogad` artifacts or logs.
 
-LDAP authentication has these current execution paths:
+Current authentication behavior:
 
-- no `-u`: current operating-system security context with Negotiate;
-- explicit `DOMAIN\user`: hidden password prompt followed by NTLM challenge/response to the named DC;
-- explicit `user@domain`: hidden password prompt followed by Negotiate.
-
-The down-level `DOMAIN\user` path uses NTLM deliberately for the remote non-domain-workstation case so the scanner does not require Kerberos KDC/SPN discovery merely to authenticate to an explicitly named DC. There is no Basic-auth fallback.
+- no `-u`: LDAP uses the current operating-system security context with Negotiate; SYSVOL uses the operating-system network security context;
+- with `-u/--username`: the CLI opens a hidden password prompt, LDAP defaults to Negotiate against the named DC, and `audit-full` automatically reuses the same credential for DogfighterAD-owned portable Kerberos/SMB SYSVOL authentication;
+- `--ldap-auth ntlm` is an explicit LDAP compatibility mode only and requires `-u`; username syntax does not silently select NTLM.
 
 There is no `-p` password flag. Password command-line options/values are intentionally rejected.
 
-Explicit CLI credentials currently apply to LDAP only. SYSVOL/SMB still uses the operating-system network security context because the isolated worker uses Windows filesystem/SMB APIs.
+When `-u` is used, `--target` must be a resolvable DC DNS hostname/FQDN. An IP literal is rejected before prompting. The exact target is used for LDAP server identity and for the `cifs/<target>` Kerberos service identity used by portable SYSVOL.
 
-When `-u` is used, the LDAP target must be a DNS hostname/FQDN. An IP literal is rejected before prompting. Use the DC FQDN rather than an IP workaround so target identity, AD naming and later SYSVOL validation remain explicit.
-
-Prefer a Windows test host for the first `audit-full` run because SYSVOL/SMB behavior is a primary validation target. The collection code itself remains cross-platform tested where practical.
+The portable SYSVOL path requires SMB 3.1.1 with signing and runs inside the isolated SYSVOL worker. It does not require a domain-joined scanner host or a pre-established Windows UNC/SMB logon context.
 
 Record before running:
 
@@ -31,6 +27,7 @@ Date/time UTC:
 DogfighterAD commit SHA:
 .NET SDK/runtime:
 Host OS:
+Domain-joined? yes/no
 Lab: MINILAB / GOAD
 Lab version/commit/snapshot:
 Collection identity (name only, no credential material):
@@ -40,67 +37,28 @@ Known expected object counts or planted objects:
 Known expected GPOs/trusts/memberships:
 ```
 
-### Remote Windows workstation preflight
+### Network preflight
 
-When DogfighterAD runs on a workstation outside the MINILAB domain, prove network naming and transport before interpreting collection failures:
+For a workstation outside the MINILAB domain, prove naming and required transports before interpreting collection failures:
 
 ```powershell
 Resolve-DnsName dc.mini.lab
 Test-NetConnection dc.mini.lab -Port 389
 Test-NetConnection dc.mini.lab -Port 445
+Test-NetConnection dc.mini.lab -Port 88
 ```
 
-A credential cannot repair DNS or routing. If `Resolve-DnsName` fails, fix the workstation's path to the lab DNS/DC first (or use a controlled temporary name-resolution configuration appropriate to the isolated lab).
+Use port 636 instead of 389 when validating LDAPS.
 
-For `audit-full`, also prove the exact SYSVOL authority returned by AD is reachable through the same OS network context:
+A credential cannot repair DNS or routing. If DNS resolution fails, fix the scanner's route/name-resolution path to the isolated lab first.
+
+Manual UNC access is useful for comparing OS redirector behavior, but it is **not a prerequisite** for explicit-credential portable SYSVOL. A WORKGROUP host may fail:
 
 ```powershell
-Get-ChildItem '\\mini.lab\sysvol\mini.lab\Policies' |
-  Select-Object -First 5 Name
+Get-ChildItem '\\mini.lab\SYSVOL\mini.lab\Policies'
 ```
 
-If LDAP credentials are needed from the workstation, use the hidden prompt form:
-
-```powershell
-./dogfighter scan `
-  --target dc.mini.lab `
-  --profile minimal `
-  -u 'MINILAB\alice' `
-  --output .\lab-artifacts\mini-minimal-remote.dogad
-```
-
-The password prompt is automatic after `-u`. Do not add `-p`, `--password` or any password value to the command line.
-
-For this exact `DOMAIN\user` form, the current CLI should print a marker like:
-
-```text
-Starting collection: target=dc.mini.lab profile=minimal ldap-auth=ntlm bind-timeout=00:00:15 request-timeout=00:00:30 collector-timeout=00:02:00.
-```
-
-If this marker never appears, investigate console/prompt handling. If it appears and the scan then waits, use the displayed deadlines when judging whether the transport returned normally. A `DOMAIN\user` run that prints `ldap-auth=negotiate` is the wrong build/configuration for the current remote-workstation path.
-
-For an `audit-full` remote run, the LDAP prompt does not create the SMB session. Establish the authorized Windows network context separately (for example a controlled `runas /netonly` shell or an explicit Windows SMB session appropriate to the isolated lab) and then run DogfighterAD from that context.
-
-### Interpreting collection failures
-
-The CLI prints sanitized issue details beneath affected capability rows. Record the issue **code and message**, not only `Failed`/`Partial`.
-
-Known LDAP operational failures include:
-
-- `collection.ldap.authentication-failed`
-- `collection.ldap.bind-timeout`
-- `collection.ldap.server-unavailable`
-- `collection.ldap.timeout`
-- `collection.ldap.security-required`
-- `collection.ldap.failed`
-
-Numeric LDAP/result codes may be included in the safe message. Do not infer a bad password from a generic collector failure; use the actual emitted issue classification.
-
-The production LDAP factory isolates the complete native connection/configuration/authentication setup, not only the explicit `Bind()` call. DogfighterAD stops waiting for that setup after 15 seconds and reports `collection.ldap.bind-timeout` if Windows has not returned. LDAP requests retain a separate 30-second timeout.
-
-The profile collector timeout is an additional outer boundary. Collection execution is isolated so even a collector that blocks synchronously before returning a `Task` cannot hold the orchestration thread past that boundary. A native OS LDAP call may remain on its isolated background task until Windows itself returns it; this is containment rather than a claim that WLDAP32 native calls are forcibly cancellable. A connection returned after its setup deadline is disposed and not reused.
-
-A scan that still does not return beyond these documented boundaries is a new live defect and must be recorded with the exact build and last visible output.
+while DogfighterAD `audit-full -u ...` succeeds through its own Kerberos/SMB worker. Record that distinction instead of weakening UNC hardening, SMB signing or scanner scope controls.
 
 ## 2. Build the exact commit
 
@@ -110,9 +68,9 @@ dotnet restore src/DogfighterAD.Cli/DogfighterAD.Cli.csproj
 dotnet build src/DogfighterAD.Cli/DogfighterAD.Cli.csproj -c Release --no-restore
 ```
 
-Use the executable from the `Release/net10.0` CLI output. Confirm `DogfighterAD.SysvolWorker` and its runtime files are present beside it before `audit-full`.
+Use the executable from `src/DogfighterAD.Cli/bin/Release/net10.0/`. Confirm `DogfighterAD.SysvolWorker` and its runtime dependencies are present beside the CLI before `audit-full`.
 
-For a self-contained Windows deployment, use:
+For a self-contained Windows deployment:
 
 ```powershell
 dotnet publish src/DogfighterAD.Cli/DogfighterAD.Cli.csproj `
@@ -122,20 +80,32 @@ dotnet publish src/DogfighterAD.Cli/DogfighterAD.Cli.csproj `
   -o C:\DogfighterBuild
 ```
 
-The publish output must contain the complete worker runtime set, not only `DogfighterAD.SysvolWorker.exe`.
+The publish output must contain the complete worker runtime set, not only the worker executable.
 
 ## 3. Minimal collection first
 
-Run the lighter profile before touching SYSVOL/ACL collection:
+Using current OS context:
 
 ```powershell
 ./dogfighter scan `
-  --target dc01.mini.lab `
+  --target dc.mini.lab `
   --profile minimal `
   --output .\lab-artifacts\mini-minimal.dogad
 ```
 
-Expected capability set:
+Using an explicit read-only identity from a non-domain host:
+
+```powershell
+./dogfighter scan `
+  --target dc.mini.lab `
+  --profile minimal `
+  -u 'MINILAB\alice' `
+  --output .\lab-artifacts\mini-minimal-explicit.dogad
+```
+
+The password prompt is automatic after `-u`. Do not add a password option/value.
+
+Expected minimal capabilities:
 
 - `directory.core`
 - `directory.domains`
@@ -146,11 +116,25 @@ Expected capability set:
 - `directory.memberships`
 - `directory.trusts`
 
-Record the command exit code and every capability status. A `Partial` or `Failed` result is a validation finding to investigate, not something to normalize away. Also record every printed issue code/message for non-Complete capabilities.
+With explicit credentials the startup marker should contain values equivalent to:
+
+```text
+ldap-auth=negotiate
+ldap-protection=sign-seal
+ldap-target-mode=fqdn-server
+sysvol-auth=portable-kerberos
+bind-timeout=00:00:15
+request-timeout=00:00:30
+collector-timeout=00:02:00
+```
+
+`sysvol-auth=portable-kerberos` describes what `audit-full` will use; the minimal profile itself does not request `gpo.sysvol`.
+
+Record the process exit code and every capability status. A `Partial` or `Failed` result is a validation finding to investigate.
 
 ## 4. Offline readback
 
-Use a new CLI invocation to prove the artifact can be consumed without an AD connection:
+Use a new CLI invocation:
 
 ```powershell
 ./dogfighter inspect --snapshot .\lab-artifacts\mini-minimal.dogad
@@ -166,13 +150,11 @@ Completion status from inspect:
 Artifact opened after network isolation/disconnect? yes/no
 ```
 
-The IDs and status must agree. For a stronger offline proof, disconnect/block access to the lab after collection and run `inspect` again; `inspect` should still work because it only opens the artifact.
+The IDs and status must agree. `inspect` is offline and should continue to work after lab network access is removed.
 
 ## 5. Validate known counts/facts
 
-Compare the CLI counts and snapshot contents against the known lab fixture, not against assumptions.
-
-Record at least:
+Compare CLI counts and snapshot contents against the known fixture, not assumptions.
 
 | Data | Expected | Actual | Result / note |
 | --- | ---: | ---: | --- |
@@ -184,28 +166,21 @@ Record at least:
 | Direct/primary memberships |  |  |  |
 | Configured trusts |  |  |  |
 
-For memberships, explicitly include at least one nested group, one primary-group relationship and any foreign-security-principal case present in the fixture.
-
-Do not treat a count mismatch as a harmless cosmetic difference until the source is understood (system objects, filtering semantics, disabled/deleted objects, range retrieval, fixture drift, etc.).
+For memberships, include a nested group, a primary-group relationship and any foreign-security-principal case present in the fixture.
 
 ## 6. Audit-full collection
 
-After minimal is understood, run:
+For a non-domain workstation using explicit credentials, the normal command is now:
 
 ```powershell
 ./dogfighter scan `
-  --target dc01.mini.lab `
+  --target dc.mini.lab `
   --profile audit-full `
+  -u 'MINILAB\alice' `
   --output .\lab-artifacts\mini-audit-full.dogad
 ```
 
-If the lab intentionally returns SYSVOL paths through another DC that is not the GPO domain DFS authority or the initial target, approve only that authority explicitly:
-
-```powershell
-  --sysvol-authority dc02.mini.lab
-```
-
-Do not add broad/wildcard authority bypasses.
+No extra SYSVOL transport flag or separate OS SMB logon is required.
 
 Audit-full additionally validates:
 
@@ -213,6 +188,16 @@ Audit-full additionally validates:
 - `gpo.metadata`
 - `gpo.links`
 - `gpo.sysvol`
+
+For explicit credentials, `gpo.sysvol` uses the isolated portable Kerberos/SMB worker. The worker connects to the exact target DC, requires SMB signing, and only reads paths that pass the existing SYSVOL scope policy.
+
+If the lab intentionally returns another approved authority in GPO metadata, scope can be extended narrowly:
+
+```powershell
+--sysvol-authority dc02.mini.lab
+```
+
+Do not add wildcard authority bypasses. Portable authentication still targets the explicitly named scan DC; this option is a path-policy approval, not permission to contact arbitrary servers.
 
 Record at minimum:
 
@@ -224,66 +209,83 @@ Record at minimum:
 | SYSVOL inventoried files |  |  |  |
 | Normalized supported GPO settings |  |  |  |
 
-Check at least one known GPT.INI, GptTmpl.inf, Registry.pol and Preferences XML case when the fixture contains them. Confirm legacy `cpassword` is represented only as the safe presence signal and that the value itself is absent from snapshot observations/settings.
+Check known `GPT.INI`, `GptTmpl.inf`, `Registry.pol` and Preferences XML cases when present. Legacy `cpassword` must be represented only as the safe presence signal; the value itself must not enter snapshot observations/settings.
+
+### Current MINILAB reference result
+
+A Windows WORKGROUP live run on 2026-09-07 completed successfully with explicit `MINILAB\alice` credentials and automatic portable SYSVOL:
+
+```text
+Status: Complete
+Profile: audit-full
+Objects: domains=1 users=8 groups=50 computers=2 ous=1 memberships=41 gpos=2
+
+directory.acls             Complete      items=62 issues=0
+gpo.links                  Complete      items=2 issues=0
+gpo.metadata               Complete      items=2 issues=0
+gpo.sysvol                 Complete      items=4 issues=0
+```
+
+Scan exit code was `0`; offline `inspect` reproduced the same snapshot ID and coverage with exit code `0`. See `docs/lab-runs/2026-09-07-workgroup-portable-sysvol-audit-full.md`.
 
 ## 7. Explicit failure/partial cases
 
-After a successful baseline, exercise controlled failure cases one at a time. Restore the lab between cases when necessary.
+After a successful baseline, exercise controlled failures one at a time.
 
 Recommended cases:
 
-1. Inaccessible or missing SYSVOL policy directory -> `gpo.sysvol` must become incomplete with an issue.
-2. Denied SYSVOL file read -> incomplete coverage; no silent omission.
-3. Out-of-scope/mutated `gPCFileSysPath` fixture -> reject before filesystem access.
-4. Unavailable/slow SYSVOL operation -> worker timeout/termination must not hang the scan indefinitely.
-5. Insufficient ACL read permissions -> `directory.acls` must be incomplete rather than clean.
-6. Large/ranged group membership -> verify range retrieval and final member count.
-7. LDAP cancellation (Ctrl+C), including during the hidden password prompt -> no successful final artifact should be published as if complete.
-8. Referral/inaccessible naming-context fixture when available -> capture actual current behavior before hardening it.
-9. Remote workstation DNS failure -> collection must fail/partial rather than being misdiagnosed as an authentication problem.
-10. Explicit LDAP username with no SMB network context -> minimal may succeed while `gpo.sysvol` remains incomplete; record the distinction.
-11. Explicit LDAP username with an IP-literal target -> parser must reject it immediately with an invalid-arguments result instead of entering LDAP collection.
-12. Wrong explicit LDAP credential in the lab -> expect a sanitized authentication issue (typically `collection.ldap.authentication-failed`) and no credential text in output/artifact.
-13. Stalled native LDAP connection/authentication setup -> expect `collection.ldap.bind-timeout` at the 15-second setup boundary instead of an indefinitely silent scan.
-14. Synthetic collector that blocks synchronously before returning its Task -> executor regression must produce `collection.collector.timeout` at the profile boundary.
-15. Remote `DOMAIN\user` explicit credential -> start marker must show `ldap-auth=ntlm`; a UPN/current-context run should show Negotiate.
+1. wrong explicit password -> sanitized LDAP/Kerberos authentication failure; no credential text in output/artifact;
+2. explicit identity with an IP-literal target -> parser rejection before prompting/collection;
+3. DNS failure for the target DC -> fail/partial with transport classification rather than a misleading clean result;
+4. unreachable TCP/88 -> portable Kerberos SYSVOL must fail/partial rather than silently falling back to NTLM;
+5. unreachable TCP/445 -> `gpo.sysvol` incomplete; no indefinite hang;
+6. inaccessible or missing GPO path -> `gpo.sysvol` incomplete with an issue;
+7. denied SYSVOL file read -> incomplete coverage; no silent omission;
+8. mutated/out-of-scope `gPCFileSysPath` -> reject before SMB file access;
+9. `..`, device-style UNC or alternate-share path injection -> scope rejection;
+10. oversized SYSVOL file -> bounded read failure / `file-too-large`, no over-budget payload;
+11. slow/stalled SMB operation -> worker timeout/termination; scanner must not hang indefinitely;
+12. insufficient ACL rights -> `directory.acls` incomplete rather than clean;
+13. large/ranged membership -> verify final count and range retrieval;
+14. Ctrl+C during prompt/LDAP/SYSVOL -> cancellation and no successful final artifact;
+15. stalled native LDAP setup -> `collection.ldap.bind-timeout` at the setup boundary;
+16. explicit `--ldap-auth ntlm` -> only LDAP changes auth mode; portable SYSVOL remains Kerberos and must not silently downgrade.
 
-For every case record the capability status and issue code/message, not just the process exit or generic console text.
+For every case record capability status and issue code/message, not only the process exit.
 
 ## 8. Read-only validation
 
-The current claim is read-only collection, not exploitation/validation.
-
-During the lab run, verify by code review and environment observation that DogfighterAD does not:
+Verify DogfighterAD does not:
 
 - issue LDAP modify/add/delete requests;
-- write SYSVOL files;
+- write/create/delete/rename SYSVOL files;
 - change GPOs;
-- dump credentials/secrets;
+- dump credentials, Kerberos tickets/session keys or SMB security blobs;
 - execute attack paths;
 - contact configured trust partners merely because a trust object exists.
 
-A configured trust is collected from local `trustedDomain` metadata only; remote reachability is not implied.
+Portable SYSVOL opens only read/list operations required for inventory and supported-file normalization.
 
 ## 9. Artifact retention
 
-`.dogad` contains sensitive AD assessment data even without passwords. Store lab artifacts in an access-controlled local path. Do not commit real/customer `.dogad` files into the source repository.
+`.dogad` contains sensitive AD assessment data even without passwords. Store lab artifacts in an access-controlled local path. Do not commit live/customer `.dogad` files.
 
-For reproducible synthetic fixtures, create intentionally sanitized fixtures separately and document their generation.
+For reproducible synthetic fixtures, create sanitized fixtures separately and document their generation.
 
 ## 10. Result record
 
-Create a dated record under `docs/lab-runs/` using the template in that directory. The record should include:
+Create a dated record under `docs/lab-runs/` including:
 
-- exact commit SHA;
+- exact `git rev-parse HEAD`;
 - lab fixture/version/state;
+- host/domain-join state;
 - commands and exit codes;
+- selected LDAP/SYSVOL auth markers;
 - expected vs actual counts;
 - capability coverage/statuses;
 - issue codes/messages for incomplete capabilities;
-- observed defects or unexplained differences;
 - whether `.dogad` offline readback succeeded;
-- measured duration and, once telemetry exists, LDAP request/page counts and peak memory;
-- explicit statement that no customer/real credentials or secrets were committed.
+- measured duration;
+- explicit statement that no real/customer credential material was committed.
 
-Only after this record is understood should the same process be repeated on the larger GOAD fixture and then used as the basis for Rule Engine work.
+Repeat the same process on the larger GOAD fixture before using the collection baseline as the foundation for Rule Engine work.
