@@ -68,9 +68,12 @@ internal sealed class KerberosSmbAuthenticationClient : IAuthenticationClient, I
             .GetAwaiter()
             .GetResult();
 
-        var cachedTicket = _client.Cache.GetCacheItem(_spn) as KerberosClientCacheEntry
-            ?? throw new SecurityException(
+        var cacheItem = _client.Cache.GetCacheItem(_spn);
+        if (cacheItem is not KerberosClientCacheEntry cachedTicket)
+        {
+            throw new SecurityException(
                 "Kerberos service-ticket cache entry is unavailable after ticket acquisition.");
+        }
 
         if (_sessionKey.Length > 0)
         {
