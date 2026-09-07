@@ -28,10 +28,7 @@ internal static class CollectionComposition
             Credential = ldapCredential
         });
 
-        IReadOnlySysvolClientFactory sysvolFactory = ldapCredential is null
-            ? new SystemSysvolClientFactory()
-            : new PortableKerberosSysvolClientFactory(ldapCredential, command.Target);
-
+        var sysvolFactory = CreateSysvolFactory(command, ldapCredential);
         var sysvolOptions = new SysvolClientOptions
         {
             ApprovedAuthorities = command.ApprovedSysvolAuthorities
@@ -49,6 +46,16 @@ internal static class CollectionComposition
             new GpoLinkCollector(ldapFactory),
             new GpoSysvolCollector(sysvolFactory, sysvolOptions)
         ];
+    }
+
+    internal static IReadOnlySysvolClientFactory CreateSysvolFactory(
+        ScanCommand command,
+        NetworkCredential? credential)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return credential is null
+            ? new SystemSysvolClientFactory()
+            : new PortableKerberosSysvolClientFactory(credential, command.Target);
     }
 
     internal static LdapAuthenticationMode SelectAuthenticationMode(ScanCommand command)
