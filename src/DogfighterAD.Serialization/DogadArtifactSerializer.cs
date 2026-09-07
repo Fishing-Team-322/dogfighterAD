@@ -13,17 +13,27 @@ public sealed class DogadArtifactSerializer
 
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
+    public Task WriteAsync(
+        AdSnapshot snapshot,
+        Stream destination,
+        CancellationToken cancellationToken = default) =>
+        WriteAsync(snapshot, destination, new DogadWriteOptions(), cancellationToken);
+
     public async Task WriteAsync(
         AdSnapshot snapshot,
         Stream destination,
+        DogadWriteOptions options,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(options);
         if (!destination.CanWrite)
         {
             throw new ArgumentException("Destination stream must be writable.", nameof(destination));
         }
+
+        ValidateWriteOptions(options);
 
         var violations = SnapshotInvariantValidator.Validate(snapshot);
         if (violations.Count > 0)
@@ -34,6 +44,13 @@ public sealed class DogadArtifactSerializer
         var canonical = SnapshotCanonicalizer.Canonicalize(snapshot);
         var payload = JsonSerializer.SerializeToUtf8Bytes(canonical, JsonOptions);
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (payload.LongLength > options.MaxSnapshotBytes)
+        {
+            throw new DogadArtifactException(
+                "dogad.payload.write-limit-exceeded",
+                $"Canonical snapshot payload is {payload.LongLength} bytes and exceeds the configured write limit of {options.MaxSnapshotBytes} bytes.");
+        }
 
         var manifest = new DogadManifest
         {
@@ -77,10 +94,26 @@ public sealed class DogadArtifactSerializer
         var limits = options ?? new DogadReadOptions();
         ValidateReadOptions(limits);
 
+        MemoryStream? boundedCopy = null;
         try
         {
-            using var archive = new ZipArchive(source, ZipArchiveMode.Read, leaveOpen: true);
-            ValidateContainerEntries(archive);
+            Stream archiveSource;
+            if (source.CanSeek)
+            {
+                ValidateSeekableContainerLength(source, limits.MaxContainerBytes);
+                archiveSource = source;
+            }
+            else
+            {
+                boundedCopy = await CopyNonSeekableContainerAsync(
+                    source,
+                    limits.MaxContainerBytes,
+                    cancellationToken).ConfigureAwait(false);
+                archiveSource = boundedCopy;
+            }
+
+            using var archive = new ZipArchive(archiveSource, ZipArchiveMode.Read, leaveOpen: true);
+            ValidateContainerEntries(archive, limits);
             var manifestEntry = GetRequiredUniqueEntry(archive, DogadFormat.ManifestEntryName);
             var payloadEntry = GetRequiredUniqueEntry(archive, DogadFormat.SnapshotEntryName);
 
@@ -177,6 +210,10 @@ public sealed class DogadArtifactSerializer
                 "The .dogad container is not a readable ZIP artifact.",
                 exception);
         }
+        finally
+        {
+            boundedCopy?.Dispose();
+        }
     }
 
     internal static byte[] SerializeCanonicalSnapshot(AdSnapshot snapshot) =>
@@ -195,22 +232,95 @@ public sealed class DogadArtifactSerializer
         await stream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
     }
 
-    private static void ValidateContainerEntries(ZipArchive archive)
+    private static void ValidateSeekableContainerLength(Stream source, long maxContainerBytes)
     {
-        var unexpected = archive.Entries
-            .Where(entry =>
-                !StringComparer.Ordinal.Equals(entry.FullName, DogadFormat.ManifestEntryName) &&
-                !StringComparer.Ordinal.Equals(entry.FullName, DogadFormat.SnapshotEntryName))
-            .Select(entry => entry.FullName)
-            .OrderBy(name => name, StringComparer.Ordinal)
-            .ToArray();
+        var remaining = source.Length - source.Position;
+        if (remaining < 0 || remaining > maxContainerBytes)
+        {
+            throw new DogadArtifactException(
+                "dogad.container.too-large",
+                $".dogad container size {Math.Max(0, remaining)} exceeds the configured input limit of {maxContainerBytes} bytes.");
+        }
+    }
 
-        if (unexpected.Length > 0)
+    private static async Task<MemoryStream> CopyNonSeekableContainerAsync(
+        Stream source,
+        long maxContainerBytes,
+        CancellationToken cancellationToken)
+    {
+        var initialCapacity = (int)Math.Min(maxContainerBytes, 64 * 1024L);
+        var output = new MemoryStream(initialCapacity);
+        var buffer = new byte[64 * 1024];
+        long total = 0;
+
+        try
+        {
+            while (true)
+            {
+                var read = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                total += read;
+                if (total > maxContainerBytes)
+                {
+                    throw new DogadArtifactException(
+                        "dogad.container.too-large",
+                        $"Non-seekable .dogad input exceeded the configured container limit of {maxContainerBytes} bytes.");
+                }
+
+                await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            }
+
+            output.Position = 0;
+            return output;
+        }
+        catch
+        {
+            output.Dispose();
+            throw;
+        }
+    }
+
+    private static void ValidateContainerEntries(ZipArchive archive, DogadReadOptions options)
+    {
+        if (archive.Entries.Count > options.MaxEntryCount)
+        {
+            throw new DogadArtifactException(
+                "dogad.container.entry-count-invalid",
+                $".dogad container has {archive.Entries.Count} entries and exceeds the configured limit of {options.MaxEntryCount}.");
+        }
+
+        foreach (var entry in archive.Entries)
+        {
+            if (entry.FullName.Length > options.MaxEntryNameChars)
+            {
+                throw new DogadArtifactException(
+                    "dogad.container.entry-name-too-long",
+                    $".dogad contains an entry name longer than the configured {options.MaxEntryNameChars}-character limit.");
+            }
+        }
+
+        var unexpected = archive.Entries.FirstOrDefault(entry =>
+            !StringComparer.Ordinal.Equals(entry.FullName, DogadFormat.ManifestEntryName) &&
+            !StringComparer.Ordinal.Equals(entry.FullName, DogadFormat.SnapshotEntryName));
+
+        if (unexpected is not null)
         {
             throw new DogadArtifactException(
                 "dogad.container.entry-unexpected",
-                $".dogad format v{DogadFormat.CurrentVersion} does not allow unexpected entries: {string.Join(", ", unexpected)}.");
+                $".dogad format v{DogadFormat.CurrentVersion} does not allow entry '{TruncateEntryName(unexpected.FullName)}'.");
         }
+    }
+
+    private static string TruncateEntryName(string name)
+    {
+        const int diagnosticLimit = 80;
+        return name.Length <= diagnosticLimit
+            ? name
+            : name[..diagnosticLimit] + "...";
     }
 
     private static ZipArchiveEntry GetRequiredUniqueEntry(ZipArchive archive, string name)
@@ -328,11 +438,23 @@ public sealed class DogadArtifactSerializer
         }
     }
 
+    private static void ValidateWriteOptions(DogadWriteOptions options)
+    {
+        if (options.MaxSnapshotBytes < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), ".dogad write payload limit must be positive.");
+        }
+    }
+
     private static void ValidateReadOptions(DogadReadOptions options)
     {
-        if (options.MaxManifestBytes < 1 || options.MaxSnapshotBytes < 1)
+        if (options.MaxManifestBytes < 1 ||
+            options.MaxSnapshotBytes < 1 ||
+            options.MaxContainerBytes < 1 ||
+            options.MaxEntryCount < 2 ||
+            options.MaxEntryNameChars < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(options), ".dogad read limits must be positive.");
+            throw new ArgumentOutOfRangeException(nameof(options), ".dogad read limits must be positive and allow the two required entries.");
         }
     }
 
@@ -345,7 +467,8 @@ public sealed class DogadArtifactSerializer
             WriteIndented = false,
             AllowTrailingCommas = false,
             ReadCommentHandling = JsonCommentHandling.Disallow,
-            MaxDepth = 128
+            MaxDepth = 128,
+            RespectNullableAnnotations = true
         };
         options.Converters.Add(new JsonStringEnumConverter());
         return options;
