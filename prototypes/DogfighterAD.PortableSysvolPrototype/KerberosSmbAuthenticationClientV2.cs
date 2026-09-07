@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Security;
 using System.Security.Cryptography;
+using Kerberos.NET;
 using Kerberos.NET.Client;
 using Kerberos.NET.Credentials;
 using Kerberos.NET.Entities;
