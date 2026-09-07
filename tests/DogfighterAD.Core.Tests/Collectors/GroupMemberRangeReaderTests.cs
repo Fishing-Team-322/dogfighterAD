@@ -23,7 +23,7 @@ public sealed class GroupMemberRangeReaderTests
         var result = await new GroupMemberRangeReader().ReadAsync(
             client,
             initial,
-            CancellationToken.None);
+            TestContext.Current.CancellationToken);
 
         Assert.True(result.Complete);
         Assert.Equal(3, result.Members.Count);
@@ -38,13 +38,93 @@ public sealed class GroupMemberRangeReaderTests
     }
 
     [Fact]
+    public async Task ReadAsync_EmptyBaseAttributeDoesNotHidePopulatedRange()
+    {
+        var groupDn = "CN=Large Group,DC=mini,DC=lab";
+        var initial = Entry(
+            groupDn,
+            ("member", Text()),
+            ("member;range=0-1", Text(
+                "CN=One,DC=mini,DC=lab",
+                "CN=Two,DC=mini,DC=lab")));
+        var client = new RangeFakeClient(
+            Entry(
+                groupDn,
+                ("member;range=2-*", Text("CN=Three,DC=mini,DC=lab"))));
+
+        var result = await new GroupMemberRangeReader().ReadAsync(
+            client,
+            initial,
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.Complete, result.Error);
+        Assert.Equal(3, result.Members.Count);
+        Assert.Contains("CN=Three,DC=mini,DC=lab", result.Members);
+        var request = Assert.Single(client.Requests);
+        Assert.Equal(["member;range=2-*"], request.Attributes);
+    }
+
+    [Fact]
+    public async Task ReadAsync_EmptyRequestedPlaceholderDoesNotHideActualContinuationRange()
+    {
+        var groupDn = "CN=Large Group,DC=mini,DC=lab";
+        var initial = Entry(
+            groupDn,
+            ("member;range=0-1", Text(
+                "CN=One,DC=mini,DC=lab",
+                "CN=Two,DC=mini,DC=lab")));
+        var client = new RangeFakeClient(
+            Entry(
+                groupDn,
+                ("member;range=2-*", Text()),
+                ("member;range=2-3", Text(
+                    "CN=Three,DC=mini,DC=lab",
+                    "CN=Four,DC=mini,DC=lab"))),
+            Entry(
+                groupDn,
+                ("member;range=4-*", Text("CN=Five,DC=mini,DC=lab"))));
+
+        var result = await new GroupMemberRangeReader().ReadAsync(
+            client,
+            initial,
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.Complete, result.Error);
+        Assert.Equal(5, result.Members.Count);
+        Assert.Equal(2, client.Requests.Count);
+        Assert.Equal(["member;range=2-*"], client.Requests[0].Attributes);
+        Assert.Equal(["member;range=4-*"], client.Requests[1].Attributes);
+    }
+
+    [Fact]
+    public async Task ReadAsync_GappedRangeIsReportedAsIncomplete()
+    {
+        var groupDn = "CN=Broken,DC=mini,DC=lab";
+        var initial = Entry(
+            groupDn,
+            ("member;range=0-0", Text("CN=One,DC=mini,DC=lab")));
+        var client = new RangeFakeClient(
+            Entry(
+                groupDn,
+                ("member;range=2-*", Text("CN=Three,DC=mini,DC=lab"))));
+
+        var result = await new GroupMemberRangeReader().ReadAsync(
+            client,
+            initial,
+            TestContext.Current.CancellationToken);
+
+        Assert.False(result.Complete);
+        Assert.NotNull(result.Error);
+    }
+
+    [Fact]
     public async Task ReadAsync_GroupWithNoMemberAttribute_IsCompleteAndEmpty()
     {
-        var client = new RangeFakeClient(null);
+        var client = new RangeFakeClient();
         var result = await new GroupMemberRangeReader().ReadAsync(
             client,
             Entry("CN=Empty,DC=mini,DC=lab"),
-            CancellationToken.None);
+            TestContext.Current.CancellationToken);
 
         Assert.True(result.Complete);
         Assert.Empty(result.Members);
@@ -66,7 +146,7 @@ public sealed class GroupMemberRangeReaderTests
         var result = await new GroupMemberRangeReader().ReadAsync(
             client,
             initial,
-            CancellationToken.None);
+            TestContext.Current.CancellationToken);
 
         Assert.False(result.Complete);
         Assert.NotNull(result.Error);
@@ -89,11 +169,11 @@ public sealed class GroupMemberRangeReaderTests
 
     private sealed class RangeFakeClient : IReadOnlyLdapClient
     {
-        private readonly LdapSearchEntry? _response;
+        private readonly Queue<LdapSearchEntry> _responses;
 
-        public RangeFakeClient(LdapSearchEntry? response)
+        public RangeFakeClient(params LdapSearchEntry[] responses)
         {
-            _response = response;
+            _responses = new Queue<LdapSearchEntry>(responses);
         }
 
         public List<LdapSearchRequest> Requests { get; } = [];
@@ -104,8 +184,12 @@ public sealed class GroupMemberRangeReaderTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Requests.Add(request);
-            return Task.FromResult(
-                new LdapSearchResult(_response is null ? [] : [_response]));
+            if (_responses.Count == 0)
+            {
+                return Task.FromResult(new LdapSearchResult([]));
+            }
+
+            return Task.FromResult(new LdapSearchResult([_responses.Dequeue()]));
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
