@@ -21,7 +21,7 @@ public sealed class SnapshotAssembler
         ArgumentNullException.ThrowIfNull(request);
 
         var merged = _fragmentMerger.Merge(request.Fragments);
-        var completionStatus = DetermineCompletionStatus(
+        var completionStatus = SnapshotCompletionStatusCalculator.Calculate(
             request.RequestedCapabilities,
             merged.Coverage);
 
@@ -62,41 +62,6 @@ public sealed class SnapshotAssembler
 
         return snapshot;
     }
-
-    private static SnapshotCompletionStatus DetermineCompletionStatus(
-        IReadOnlySet<string> requestedCapabilities,
-        IReadOnlyList<CapabilityCoverage> coverage)
-    {
-        if (requestedCapabilities.Count == 0)
-        {
-            return SnapshotCompletionStatus.Complete;
-        }
-
-        var coverageByCapability = coverage.ToDictionary(
-            x => x.CapabilityId,
-            StringComparer.Ordinal);
-
-        var statuses = requestedCapabilities
-            .Select(capability => coverageByCapability.TryGetValue(capability, out var item)
-                ? item.Status
-                : CapabilityStatus.Failed)
-            .ToArray();
-
-        if (statuses.All(IsSatisfied))
-        {
-            return SnapshotCompletionStatus.Complete;
-        }
-
-        if (statuses.Any(x => x is CapabilityStatus.Complete or CapabilityStatus.Partial or CapabilityStatus.NotApplicable))
-        {
-            return SnapshotCompletionStatus.Partial;
-        }
-
-        return SnapshotCompletionStatus.Failed;
-    }
-
-    private static bool IsSatisfied(CapabilityStatus status) =>
-        status is CapabilityStatus.Complete or CapabilityStatus.NotApplicable;
 }
 
 public sealed record SnapshotAssemblyRequest
