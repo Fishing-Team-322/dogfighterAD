@@ -9,6 +9,15 @@ namespace DogfighterAD.Collectors.ActiveDirectory.Ldap;
 
 public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
 {
+    internal const int MaxOutstandingNativeSetups = 16;
+
+    // WLDAP32/native LDAP setup is not forcibly cancellable by Task.WaitAsync. Keep a process-wide
+    // hard cap so timed-out setup calls cannot accumulate without bound across repeated scans. A
+    // slot is released only when the physical setup task actually exits, not when the caller stops
+    // waiting for it.
+    private static readonly SemaphoreSlim NativeSetupSlots =
+        new(MaxOutstandingNativeSetups, MaxOutstandingNativeSetups);
+
     private readonly LdapClientOptions _options;
 
     public SystemLdapClientFactory(LdapClientOptions? options = null)
@@ -24,17 +33,26 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
         ArgumentException.ThrowIfNullOrWhiteSpace(target);
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Clone an explicit credential before entering native WLDAP32 code. A timed-out native setup
+        if (!await NativeSetupSlots.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            throw new CollectorOperationalException(
+                "collection.ldap.setup-capacity",
+                $"LDAP native setup capacity is exhausted ({MaxOutstandingNativeSetups} unfinished setup operations). " +
+                "Wait for prior timed-out native operations to finish before starting more LDAP setup work.");
+        }
+
+        // Clone an explicit credential before entering native LDAP code. A timed-out native setup
         // may continue on its isolated task after the CLI scan scope returns; it must therefore not
         // depend on the prompt-owned SecureString lifetime.
-        var credentialLease = CreateCredentialLease(_options.Credential);
-
-        // WLDAP32 may block synchronously not only in Bind(), but also while initializing/configuring
-        // the native LDAP handle. Keep the complete native setup boundary off the orchestration
-        // thread and apply an external hard deadline to the whole operation.
+        CredentialLease? credentialLease = null;
         Task<ConnectionSetupResult> setupTask;
         try
         {
+            credentialLease = CreateCredentialLease(_options.Credential);
+
+            // Native LDAP may block synchronously not only in Bind(), but also while initializing or
+            // configuring the handle. Keep the complete native setup boundary off the orchestration
+            // thread and apply an external deadline to the caller's wait.
             setupTask = Task.Run(
                 () => CreateAndBindConnection(target, credentialLease),
                 CancellationToken.None);
@@ -42,9 +60,11 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
         catch
         {
             credentialLease?.Dispose();
+            NativeSetupSlots.Release();
             throw;
         }
 
+        ReleaseNativeSetupSlotAfterPhysicalCompletion(setupTask);
         ObserveBackgroundFault(setupTask);
 
         try
@@ -64,6 +84,7 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
                 "collection.ldap.bind-timeout",
                 $"LDAP connection/authentication setup did not complete within {_options.BindTimeout} " +
                 $"(auth={_options.AuthenticationMode}, fqdn-server-bind={_options.TreatTargetAsFullyQualifiedDnsHostName}). " +
+                "The native setup may still be finishing under the bounded background-operation budget. " +
                 "Verify target reachability and authentication prerequisites.",
                 exception);
         }
@@ -119,11 +140,28 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
 
     internal static void ConfigureSession(LdapConnection connection, bool useLdaps)
     {
+        ArgumentNullException.ThrowIfNull(connection);
+
         connection.SessionOptions.ProtocolVersion = 3;
         connection.SessionOptions.SecureSocketLayer = useLdaps;
         // Collectors query the selected naming context on the selected server. Native referral
         // chasing can otherwise initiate unscoped discovery/authentication on a workgroup host.
         connection.SessionOptions.ReferralChasing = ReferralChasingOptions.None;
+
+        if (!useLdaps)
+        {
+            // Port 389 is allowed only with SASL integrity/confidentiality protection owned by the
+            // application. Do not silently fall back to an unsigned or unsealed LDAP session.
+            // These options must be configured before Bind().
+            connection.SessionOptions.Signing = true;
+            connection.SessionOptions.Sealing = true;
+
+            if (!connection.SessionOptions.Signing || !connection.SessionOptions.Sealing)
+            {
+                throw new InvalidOperationException(
+                    "LDAP signing/sealing could not be enabled for the non-TLS session.");
+            }
+        }
     }
 
     internal static LdapDirectoryIdentifier CreateDirectoryIdentifier(
@@ -174,6 +212,15 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
             passwordCopy?.Dispose();
             throw;
         }
+    }
+
+    private static void ReleaseNativeSetupSlotAfterPhysicalCompletion(Task task)
+    {
+        _ = task.ContinueWith(
+            static _ => NativeSetupSlots.Release(),
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     private static void ObserveBackgroundFault(Task task)
