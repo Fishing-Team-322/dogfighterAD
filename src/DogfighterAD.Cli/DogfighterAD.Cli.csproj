@@ -18,9 +18,11 @@
 
   <Target Name="CopySysvolWorker" AfterTargets="Build">
     <ItemGroup>
-      <SysvolWorkerFiles Include="$(MSBuildThisFileDirectory)..\DogfighterAD.SysvolWorker\bin\$(Configuration)\net10.0\DogfighterAD.SysvolWorker*" />
+      <SysvolWorkerFiles Include="$(MSBuildThisFileDirectory)..\DogfighterAD.SysvolWorker\bin\$(Configuration)\net10.0\**\*" />
     </ItemGroup>
-    <Copy SourceFiles="@(SysvolWorkerFiles)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(SysvolWorkerFiles)"
+          DestinationFiles="@(SysvolWorkerFiles->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="PublishSysvolWorker" AfterTargets="Publish">

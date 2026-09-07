@@ -95,11 +95,13 @@ internal static class CliApplication
         var ldapAuthMode = CollectionComposition.SelectAuthenticationMode(command);
         var namedServerBinding = CollectionComposition.UsesExplicitNamedServerBinding(ldapCredential?.Credential);
         var ldapProtection = command.UseLdaps ? "ldaps" : "sign-seal";
+        var sysvolAuthentication = ldapCredential is null ? "os-context" : "portable-kerberos";
         await error.WriteLineAsync(
                 $"Starting collection: target={command.Target} profile={profile.Name} " +
                 $"ldap-auth={ldapAuthMode.ToString().ToLowerInvariant()} " +
                 $"ldap-protection={ldapProtection} " +
                 $"ldap-target-mode={(namedServerBinding ? "fqdn-server" : "discovery")} " +
+                $"sysvol-auth={sysvolAuthentication} " +
                 $"bind-timeout={CollectionComposition.LdapBindTimeout} " +
                 $"request-timeout={CollectionComposition.LdapRequestTimeout} " +
                 $"collector-timeout={profile.CollectorTimeout}.")
@@ -206,19 +208,19 @@ internal static class CliApplication
             .ConfigureAwait(false);
         await writer.WriteLineAsync().ConfigureAwait(false);
         await writer.WriteLineAsync(
-                "Authentication: LDAP defaults to Negotiate. Supplying -u/--username opens a hidden password prompt; password command-line options are rejected.")
+                "Authentication: LDAP defaults to Negotiate. Supplying -u/--username opens a hidden password prompt; the explicit credential is reused for portable Kerberos SYSVOL access so audit-full does not depend on the host SMB logon context. Password command-line options are rejected.")
             .ConfigureAwait(false);
         await writer.WriteLineAsync(
-                "NTLM is an explicit compatibility mode only: use --ldap-auth ntlm together with -u/--username. Username syntax no longer silently selects NTLM.")
+                "NTLM is an explicit LDAP compatibility mode only: use --ldap-auth ntlm together with -u/--username. SYSVOL still uses Kerberos with the same explicit credential.")
             .ConfigureAwait(false);
         await writer.WriteLineAsync(
                 "LDAP transport protection is mandatory: without --ldaps DogfighterAD requires LDAP signing and sealing before bind; with --ldaps normal server-certificate validation remains enabled. There is no silent unprotected downgrade.")
             .ConfigureAwait(false);
         await writer.WriteLineAsync(
-                "Explicit LDAP credentials require a DNS hostname target rather than an IP address.")
+                "Explicit credentials require a DNS hostname target rather than an IP address. Portable SYSVOL connects directly to that target over SMB and requires SMB signing.")
             .ConfigureAwait(false);
         await writer.WriteLineAsync(
-                "SYSVOL/SMB still uses the operating-system network security context. Explicit LDAP credentials do not establish an SMB session or repair DNS/routing.")
+                "Without -u/--username, SYSVOL uses the operating-system network security context for backward compatibility.")
             .ConfigureAwait(false);
         await writer.WriteLineAsync(
                 "scan writes a temporary artifact, reads it back through the strict .dogad reader, and only then atomically replaces the requested output file.")

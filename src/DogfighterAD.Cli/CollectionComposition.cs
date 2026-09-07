@@ -27,7 +27,8 @@ internal static class CollectionComposition
             TreatTargetAsFullyQualifiedDnsHostName = UsesExplicitNamedServerBinding(ldapCredential),
             Credential = ldapCredential
         });
-        var sysvolFactory = new SystemSysvolClientFactory();
+
+        var sysvolFactory = CreateSysvolFactory(command, ldapCredential);
         var sysvolOptions = new SysvolClientOptions
         {
             ApprovedAuthorities = command.ApprovedSysvolAuthorities
@@ -45,6 +46,16 @@ internal static class CollectionComposition
             new GpoLinkCollector(ldapFactory),
             new GpoSysvolCollector(sysvolFactory, sysvolOptions)
         ];
+    }
+
+    internal static IReadOnlySysvolClientFactory CreateSysvolFactory(
+        ScanCommand command,
+        NetworkCredential? credential)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return credential is null
+            ? new SystemSysvolClientFactory()
+            : new PortableKerberosSysvolClientFactory(credential, command.Target);
     }
 
     internal static LdapAuthenticationMode SelectAuthenticationMode(ScanCommand command)

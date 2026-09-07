@@ -21,7 +21,7 @@ The project is built around a strict separation between collection, normalizatio
 
 The foundation branch contains the snapshot/domain model, deterministic fragment assembly, capability-driven collection planning/execution, read-only paged/streaming LDAP transport, RootDSE discovery, default-domain metadata, users/groups/computers/OUs, range-safe memberships, local configured trusts, DACL/ACE collection, GPO metadata/links and supported SYSVOL normalization. Stable fact identity, capability-version compatibility, core tests and cross-platform GitHub Actions CI are in place.
 
-SYSVOL path scope and streaming byte limits are enforced before/while I/O. Potentially blocking SYSVOL filesystem calls are isolated in the disposable `DogfighterAD.SysvolWorker` helper process with per-operation deadlines and forced termination/restart.
+SYSVOL path scope and streaming byte limits are enforced before/while I/O. Potentially blocking SYSVOL work is isolated in the disposable `DogfighterAD.SysvolWorker` helper process with per-operation deadlines and forced termination/restart. With explicit `-u/--username` credentials, the worker uses DogfighterAD-owned Kerberos + SMB 3.1.1 with required signing against the named DC instead of depending on the host OS SMB redirector. Without `-u`, the existing operating-system network security context path remains available.
 
 A thin runnable CLI now composes the existing Collection Core:
 
@@ -30,9 +30,9 @@ dogfighter scan --target dc01.mini.lab --profile minimal --output .\mini.dogad
 dogfighter inspect --snapshot .\mini.dogad
 ```
 
-`scan` uses the current OS security context for LDAP Negotiate authentication, writes a temporary deterministic `.dogad`, reads it back through the strict artifact reader, and only then replaces the requested output file. Explicit usernames are accepted with `-u`; passwords are read only from the hidden prompt. NTLM requires explicit `--ldap-auth ntlm`. Non-TLS LDAP requires signing and sealing; `--ldaps` keeps platform certificate validation. `inspect` is offline and prints snapshot/coverage/count summaries.
+`scan` uses the current OS security context for LDAP Negotiate authentication when no explicit identity is supplied. Explicit usernames are accepted with `-u`; passwords are read only from the hidden prompt and are reused for both LDAP and portable Kerberos SYSVOL on `audit-full`. NTLM is an explicit LDAP compatibility mode only and requires `--ldap-auth ntlm`. Non-TLS LDAP requires signing and sealing; `--ldaps` keeps platform certificate validation. Explicit credentials require a resolvable DC DNS hostname/FQDN rather than an IP literal. `inspect` is offline and prints snapshot/coverage/count summaries.
 
-The CLI and offline synthetic round trip are covered by CI, but **this review-fix package has not been validated against live AD/SMB**. Analysis rules, reports, diff/retest and graph analysis are not implemented yet.
+MINILAB live validation now includes a complete `audit-full` run from a non-domain/WORKGROUP Windows workstation using explicit credentials and portable Kerberos SYSVOL: all directory/GPO/SYSVOL capabilities completed with zero issues, and strict offline `.dogad` readback reproduced the same snapshot ID and coverage. Linux build/tests are green in CI; Linux live SYSVOL validation remains a later acceptance gate. Analysis rules, reports, diff/retest and graph analysis are not implemented yet.
 
 ## Documentation
 

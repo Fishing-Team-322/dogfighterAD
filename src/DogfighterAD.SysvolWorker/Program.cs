@@ -10,45 +10,128 @@ internal static class Program
     public static int Main()
     {
         using var output = Console.OpenStandardOutput();
+        PortableKerberosSysvolBackend? portableBackend = null;
 
-        string? line;
-        while ((line = Console.ReadLine()) is not null)
+        try
         {
-            SysvolWorkerRequest request;
-            try
+            string? line;
+            while ((line = Console.ReadLine()) is not null)
             {
-                request = SysvolWorkerProtocol.DeserializeRequest(line);
-            }
-            catch
-            {
-                WriteError(output, SysvolWorkerErrorCode.InvalidRequest);
-                continue;
-            }
-
-            var testBlockPath = Environment.GetEnvironmentVariable(TestBlockEnvironment);
-            if (!string.IsNullOrEmpty(testBlockPath) &&
-                string.Equals(request.Path, testBlockPath, StringComparison.Ordinal))
-            {
-                Thread.Sleep(Timeout.Infinite);
-            }
-
-            switch (request.Operation)
-            {
-                case SysvolWorkerOperation.Enumerate:
-                    HandleEnumerate(output, request.Path);
-                    break;
-
-                case SysvolWorkerOperation.Read:
-                    HandleRead(output, request.Path, request.MaxBytes);
-                    break;
-
-                default:
+                SysvolWorkerRequest request;
+                try
+                {
+                    request = SysvolWorkerProtocol.DeserializeRequest(line);
+                }
+                catch
+                {
                     WriteError(output, SysvolWorkerErrorCode.InvalidRequest);
-                    break;
+                    continue;
+                }
+
+                var testBlockPath = Environment.GetEnvironmentVariable(TestBlockEnvironment);
+                if (!string.IsNullOrEmpty(testBlockPath) &&
+                    string.Equals(request.Path, testBlockPath, StringComparison.Ordinal))
+                {
+                    Thread.Sleep(Timeout.Infinite);
+                }
+
+                if (request.Transport == SysvolWorkerTransport.PortableKerberos)
+                {
+                    try
+                    {
+                        if (portableBackend is null || !portableBackend.Matches(request))
+                        {
+                            portableBackend?.Dispose();
+                            portableBackend = PortableKerberosSysvolBackend.Create(request);
+                        }
+
+                        switch (request.Operation)
+                        {
+                            case SysvolWorkerOperation.Enumerate:
+                                HandlePortableEnumerate(output, portableBackend, request.Path);
+                                break;
+                            case SysvolWorkerOperation.Read:
+                                HandlePortableRead(output, portableBackend, request.Path, request.MaxBytes);
+                                break;
+                            default:
+                                WriteError(output, SysvolWorkerErrorCode.InvalidRequest);
+                                break;
+                        }
+                    }
+                    catch (PortableSysvolException exception)
+                    {
+                        WriteError(output, exception.ErrorCode);
+                    }
+                    catch
+                    {
+                        WriteError(output, SysvolWorkerErrorCode.InternalFailure);
+                    }
+                    continue;
+                }
+
+                portableBackend?.Dispose();
+                portableBackend = null;
+
+                switch (request.Operation)
+                {
+                    case SysvolWorkerOperation.Enumerate:
+                        HandleEnumerate(output, request.Path);
+                        break;
+                    case SysvolWorkerOperation.Read:
+                        HandleRead(output, request.Path, request.MaxBytes);
+                        break;
+                    default:
+                        WriteError(output, SysvolWorkerErrorCode.InvalidRequest);
+                        break;
+                }
             }
+
+            return 0;
+        }
+        finally
+        {
+            portableBackend?.Dispose();
+        }
+    }
+
+    private static void HandlePortableEnumerate(
+        Stream output,
+        PortableKerberosSysvolBackend backend,
+        string rootPath)
+    {
+        foreach (var entry in backend.Enumerate(rootPath))
+        {
+            WriteFrame(
+                output,
+                SysvolWorkerFrameKind.Entry,
+                SysvolWorkerProtocol.SerializeEntry(entry));
+        }
+        WriteFrame(output, SysvolWorkerFrameKind.Complete, ReadOnlyMemory<byte>.Empty);
+    }
+
+    private static void HandlePortableRead(
+        Stream output,
+        PortableKerberosSysvolBackend backend,
+        string fullPath,
+        int maxBytes)
+    {
+        if (maxBytes < 1)
+        {
+            WriteError(output, SysvolWorkerErrorCode.InvalidRequest);
+            return;
         }
 
-        return 0;
+        var content = backend.Read(fullPath, maxBytes);
+        const int chunkSize = 64 * 1024;
+        for (var offset = 0; offset < content.Length; offset += chunkSize)
+        {
+            var count = Math.Min(chunkSize, content.Length - offset);
+            WriteFrame(
+                output,
+                SysvolWorkerFrameKind.Data,
+                content.AsMemory(offset, count));
+        }
+        WriteFrame(output, SysvolWorkerFrameKind.Complete, ReadOnlyMemory<byte>.Empty);
     }
 
     private static void HandleEnumerate(Stream output, string rootPath)

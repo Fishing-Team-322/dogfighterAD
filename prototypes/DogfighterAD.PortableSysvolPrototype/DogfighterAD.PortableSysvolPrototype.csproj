@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <AssemblyName>DogfighterAD.SysvolWorker</AssemblyName>
+    <AssemblyName>DogfighterAD.PortableSysvolPrototype</AssemblyName>
+    <RootNamespace>DogfighterAD.PortableSysvolPrototype</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\DogfighterAD.Collectors.ActiveDirectory\DogfighterAD.Collectors.ActiveDirectory.csproj" />
+    <Compile Remove="Program.cs" />
   </ItemGroup>
 
   <ItemGroup>
