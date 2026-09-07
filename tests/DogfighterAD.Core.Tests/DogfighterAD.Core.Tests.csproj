@@ -27,4 +27,7 @@
     </ItemGroup>
     <Copy SourceFiles="@(SysvolWorkerFiles)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
   </Target>
+  <ItemGroup>
+    <Compile Include="../../prototypes/DogfighterAD.PortableSysvolPrototype/SmbSessionKey.cs" Link="Prototype/SmbSessionKey.cs" />
+  </ItemGroup>
 </Project>

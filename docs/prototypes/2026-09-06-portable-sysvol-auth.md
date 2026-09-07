@@ -69,3 +69,23 @@ Do not collapse these into a generic `IOException` in the spike report.
 ## Integration decision
 
 Only after both platforms pass should the transport be integrated behind the existing `IReadOnlySysvolClient` and helper-process isolation boundary. The existing GPO path-policy validation, evidence/provenance model, timeout/kill semantics and coverage rules remain requirements. Production integration should be a separate reviewed change from the prototype itself.
+
+## 2026-09-07: SMB SessionKey length correction
+
+Baseline b9f10d6 timed out at tree-connect after successful Kerberos login.
+The adapter passed the entire Kerberos key to SMBLibrary's key derivation.
+Normalize it to 16 bytes before deriving SMB signing/encryption material:
+truncate longer keys, right-pad shorter keys with zero bytes, reject empty keys.
+See [MS-SMB2 3.2.5.3.1](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-smb2/7fd079ca-17e6-4f02-8449-46b606ea289c).
+
+Validation on non-domain Windows MAIN: Release build succeeded; 222 executable
+core tests passed, including four normalization cases. The corrected prototype
+read 22 bytes from the selected default-domain-policy GPT.INI on dc.mini.lab
+using SMB311 with required signing, in 11.335 seconds overall, with the original
+20-second deadline. No signing bypass or authentication fallback was introduced.
+
+This narrowly fixes the reproduced key-length defect and preserves the existing
+prototype ticket-key selection. General GSS context/subkey/AP-REP handling,
+Linux validation, a trusted control-file comparison, and cleanup/deadline
+isolation remain follow-up work. Successful session setup alone still must not
+be treated as proof of a complete secure transport implementation.

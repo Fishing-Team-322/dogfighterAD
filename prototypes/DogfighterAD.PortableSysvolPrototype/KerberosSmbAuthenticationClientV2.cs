@@ -80,10 +80,9 @@ internal sealed class KerberosSmbAuthenticationClient : IAuthenticationClient, I
             CryptographicOperations.ZeroMemory(_sessionKey);
         }
 
-        // SMBLibrary derives SMB signing/encryption material from the Kerberos
-        // service-ticket session key. ApplicationSessionContext.SessionKey may
-        // represent an authenticator subkey, so use the cached ticket key here.
-        _sessionKey = cachedTicket.SessionKey.KeyValue.ToArray();
+        // Preserve the prototype ticket-key selection; normalize the SMB SessionKey
+        // before SMBLibrary derives signing/encryption material (MS-SMB2 3.2.5.3.1).
+        _sessionKey = SmbSessionKey.Normalize(cachedTicket.SessionKey.KeyValue.Span);
         return context.ApReq.EncodeGssApi().ToArray();
     }
 
