@@ -68,11 +68,19 @@ internal sealed class KerberosSmbAuthenticationClient : IAuthenticationClient, I
             .GetAwaiter()
             .GetResult();
 
+        var cachedTicket = _client.Cache.GetCacheItem(_spn) as KerberosClientCacheEntry
+            ?? throw new SecurityException(
+                "Kerberos service-ticket cache entry is unavailable after ticket acquisition.");
+
         if (_sessionKey.Length > 0)
         {
             CryptographicOperations.ZeroMemory(_sessionKey);
         }
-        _sessionKey = context.SessionKey.KeyValue.ToArray();
+
+        // SMBLibrary derives SMB signing/encryption material from the Kerberos
+        // service-ticket session key. ApplicationSessionContext.SessionKey may
+        // represent an authenticator subkey, so use the cached ticket key here.
+        _sessionKey = cachedTicket.SessionKey.KeyValue.ToArray();
         return context.ApReq.EncodeGssApi().ToArray();
     }
 
