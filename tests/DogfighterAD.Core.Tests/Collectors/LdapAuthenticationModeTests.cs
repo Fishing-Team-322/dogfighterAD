@@ -8,34 +8,50 @@ namespace DogfighterAD.Core.Tests.Collectors;
 public sealed class LdapAuthenticationModeTests
 {
     [Fact]
-    public void DownLevelExplicitCredential_UsesNtlm()
+    public void DownLevelExplicitCredential_DefaultsToNegotiate()
     {
+        var command = Command();
         var credential = new NetworkCredential("alice", "synthetic-test-password", "MINILAB");
 
         Assert.Equal(
+            LdapAuthenticationMode.Negotiate,
+            CollectionComposition.SelectAuthenticationMode(command));
+        Assert.True(CollectionComposition.UsesExplicitNamedServerBinding(credential));
+    }
+
+    [Fact]
+    public void ExplicitNtlmCompatibilityMode_UsesNtlm()
+    {
+        var command = Command() with
+        {
+            LdapAuthenticationMode = LdapAuthenticationMode.Ntlm,
+            Username = "MINILAB\\alice"
+        };
+
+        Assert.Equal(
             LdapAuthenticationMode.Ntlm,
-            CollectionComposition.SelectAuthenticationMode(credential));
+            CollectionComposition.SelectAuthenticationMode(command));
         Assert.Equal(
             AuthType.Ntlm,
             SystemLdapClientFactory.MapAuthenticationMode(LdapAuthenticationMode.Ntlm));
     }
 
     [Fact]
-    public void UpnExplicitCredential_RetainsNegotiate()
+    public void UpnExplicitCredential_DefaultsToNegotiate()
     {
-        var credential = new NetworkCredential("alice@mini.lab", "synthetic-test-password");
+        var command = Command() with { Username = "alice@mini.lab" };
 
         Assert.Equal(
             LdapAuthenticationMode.Negotiate,
-            CollectionComposition.SelectAuthenticationMode(credential));
+            CollectionComposition.SelectAuthenticationMode(command));
     }
 
     [Fact]
-    public void CurrentSecurityContext_RetainsNegotiate()
+    public void CurrentSecurityContext_DefaultsToNegotiate()
     {
         Assert.Equal(
             LdapAuthenticationMode.Negotiate,
-            CollectionComposition.SelectAuthenticationMode(null));
+            CollectionComposition.SelectAuthenticationMode(Command()));
     }
 
     [Fact]
@@ -82,4 +98,11 @@ public sealed class LdapAuthenticationModeTests
                 BindTimeout = TimeSpan.Zero
             }));
     }
+
+    private static ScanCommand Command() =>
+        new()
+        {
+            Target = "dc.mini.lab",
+            OutputPath = "out.dogad"
+        };
 }
