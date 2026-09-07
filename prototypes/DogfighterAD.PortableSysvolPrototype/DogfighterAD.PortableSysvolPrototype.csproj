@@ -6,6 +6,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Program.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Kerberos.NET" Version="4.6.168" />
     <PackageReference Include="SMBLibrary" Version="1.5.7.1" />
   </ItemGroup>
