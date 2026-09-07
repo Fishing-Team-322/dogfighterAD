@@ -23,7 +23,7 @@ internal static class CollectionComposition
             UseLdaps = command.UseLdaps,
             BindTimeout = LdapBindTimeout,
             RequestTimeout = LdapRequestTimeout,
-            AuthenticationMode = SelectAuthenticationMode(ldapCredential),
+            AuthenticationMode = SelectAuthenticationMode(command),
             TreatTargetAsFullyQualifiedDnsHostName = UsesExplicitNamedServerBinding(ldapCredential),
             Credential = ldapCredential
         });
@@ -47,15 +47,10 @@ internal static class CollectionComposition
         ];
     }
 
-    internal static LdapAuthenticationMode SelectAuthenticationMode(NetworkCredential? credential)
+    internal static LdapAuthenticationMode SelectAuthenticationMode(ScanCommand command)
     {
-        // A down-level DOMAIN\\user identity from a non-domain workstation should not depend on
-        // Kerberos KDC/SPN discovery merely to reach the explicitly named DC. Use NTLM challenge/
-        // response for that explicit identity. Current-OS-context and UPN credentials retain
-        // Negotiate so Kerberos remains available where the environment supports it.
-        return credential is not null && !string.IsNullOrWhiteSpace(credential.Domain)
-            ? LdapAuthenticationMode.Ntlm
-            : LdapAuthenticationMode.Negotiate;
+        ArgumentNullException.ThrowIfNull(command);
+        return command.LdapAuthenticationMode;
     }
 
     internal static bool UsesExplicitNamedServerBinding(NetworkCredential? credential) =>
