@@ -86,11 +86,13 @@ internal static class CliApplication
                 .ReadNetworkCredentialAsync(command.Username, error, cancellationToken)
                 .ConfigureAwait(false);
 
-        var ldapAuthMode = CollectionComposition.SelectAuthenticationMode(ldapCredential?.Credential);
+        var ldapAuthMode = CollectionComposition.SelectAuthenticationMode(command);
         var namedServerBinding = CollectionComposition.UsesExplicitNamedServerBinding(ldapCredential?.Credential);
+        var ldapProtection = command.UseLdaps ? "ldaps" : "sign-seal";
         await error.WriteLineAsync(
                 $"Starting collection: target={command.Target} profile={profile.Name} " +
                 $"ldap-auth={ldapAuthMode.ToString().ToLowerInvariant()} " +
+                $"ldap-protection={ldapProtection} " +
                 $"ldap-target-mode={(namedServerBinding ? "fqdn-server" : "discovery")} " +
                 $"bind-timeout={CollectionComposition.LdapBindTimeout} " +
                 $"request-timeout={CollectionComposition.LdapRequestTimeout} " +
@@ -190,17 +192,20 @@ internal static class CliApplication
         await writer.WriteLineAsync().ConfigureAwait(false);
         await writer.WriteLineAsync("Usage:").ConfigureAwait(false);
         await writer.WriteLineAsync(
-                "  dogfighter scan --target <host-or-domain> --output <snapshot.dogad> [--profile minimal|audit-full] [-u <DOMAIN\\user|user@domain>] [--ldaps] [--ldap-port <1-65535>] [--sysvol-authority <host>]...")
+                "  dogfighter scan --target <host-or-domain> --output <snapshot.dogad> [--profile minimal|audit-full] [-u <DOMAIN\\user|user@domain>] [--ldap-auth negotiate|ntlm] [--ldaps] [--ldap-port <1-65535>] [--sysvol-authority <host>]...")
             .ConfigureAwait(false);
         await writer.WriteLineAsync(
                 "  dogfighter inspect --snapshot <snapshot.dogad>")
             .ConfigureAwait(false);
         await writer.WriteLineAsync().ConfigureAwait(false);
         await writer.WriteLineAsync(
-                "Authentication: LDAP defaults to the current operating-system security context with Negotiate. Supplying -u/--username automatically opens a hidden password prompt; password command-line options are rejected.")
+                "Authentication: LDAP defaults to Negotiate. Supplying -u/--username opens a hidden password prompt; password command-line options are rejected.")
             .ConfigureAwait(false);
         await writer.WriteLineAsync(
-                "For explicit DOMAIN\\user credentials Dogfighter uses NTLM challenge/response to the named DC so a non-domain workstation does not depend on Kerberos KDC/SPN discovery. Explicit UPN credentials retain Negotiate.")
+                "NTLM is an explicit compatibility mode only: use --ldap-auth ntlm together with -u/--username. Username syntax no longer silently selects NTLM.")
+            .ConfigureAwait(false);
+        await writer.WriteLineAsync(
+                "LDAP transport protection is mandatory: without --ldaps DogfighterAD requires LDAP signing and sealing before bind; with --ldaps normal server-certificate validation remains enabled. There is no silent unprotected downgrade.")
             .ConfigureAwait(false);
         await writer.WriteLineAsync(
                 "Explicit LDAP credentials require a DNS hostname target rather than an IP address.")
