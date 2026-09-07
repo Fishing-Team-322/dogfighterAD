@@ -27,7 +27,11 @@ internal static class CollectionComposition
             TreatTargetAsFullyQualifiedDnsHostName = UsesExplicitNamedServerBinding(ldapCredential),
             Credential = ldapCredential
         });
-        var sysvolFactory = new SystemSysvolClientFactory();
+
+        IReadOnlySysvolClientFactory sysvolFactory = ldapCredential is null
+            ? new SystemSysvolClientFactory()
+            : new PortableKerberosSysvolClientFactory(ldapCredential, command.Target);
+
         var sysvolOptions = new SysvolClientOptions
         {
             ApprovedAuthorities = command.ApprovedSysvolAuthorities
