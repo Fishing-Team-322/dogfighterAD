@@ -6,6 +6,15 @@ public static class SnapshotInvariantValidator
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
+        // JSON required/non-null annotations are compile-time contracts, not a complete validation
+        // boundary for untrusted artifacts. Structural validation must run before any semantic code
+        // dereferences nested objects or canonicalizes collections.
+        var structuralViolations = SnapshotStructuralValidator.Validate(snapshot);
+        if (structuralViolations.Count > 0)
+        {
+            return structuralViolations;
+        }
+
         var violations = new List<SnapshotInvariantViolation>();
 
         if (snapshot.Metadata.SchemaVersion != SnapshotSchema.CurrentVersion)
@@ -33,6 +42,16 @@ public static class SnapshotInvariantValidator
         ValidateRelationships(snapshot.Content, violations);
         ValidateObservations(snapshot.Observations, violations);
         ValidateCoverage(snapshot.Coverage, snapshot.Metadata.RequestedCapabilities, violations);
+
+        var calculatedStatus = SnapshotCompletionStatusCalculator.Calculate(
+            snapshot.Metadata.RequestedCapabilities,
+            snapshot.Coverage);
+        if (snapshot.Metadata.CompletionStatus != calculatedStatus)
+        {
+            violations.Add(new(
+                "snapshot.completion-status.inconsistent",
+                $"Snapshot completion status {snapshot.Metadata.CompletionStatus} does not match requested capability coverage ({calculatedStatus})."));
+        }
 
         return violations;
     }
@@ -189,6 +208,7 @@ public static class SnapshotInvariantValidator
             }
         }
 
+        var acePositions = new HashSet<(AdObjectId TargetObjectId, int AceIndex)>();
         foreach (var ace in content.Aces)
         {
             if (!knownObjectIds.Contains(ace.TargetObjectId))
@@ -196,6 +216,19 @@ public static class SnapshotInvariantValidator
                 violations.Add(new(
                     "snapshot.ace.unknown-target",
                     $"ACE references unknown target object {ace.TargetObjectId}."));
+            }
+
+            if (ace.AceIndex < 0)
+            {
+                violations.Add(new(
+                    "snapshot.ace.invalid-index",
+                    $"ACE for target {ace.TargetObjectId} has negative source index {ace.AceIndex}."));
+            }
+            else if (!acePositions.Add((ace.TargetObjectId, ace.AceIndex)))
+            {
+                violations.Add(new(
+                    "snapshot.ace.duplicate-index",
+                    $"Target {ace.TargetObjectId} contains more than one typed ACE at source index {ace.AceIndex}."));
             }
 
             if (string.IsNullOrWhiteSpace(ace.TrusteeSid))
