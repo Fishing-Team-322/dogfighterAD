@@ -478,7 +478,7 @@ internal sealed class PortableKerberosSysvolClient : IReadOnlySysvolClient
         {
             SysvolWorkerErrorCode.NotFound => new FileNotFoundException("SYSVOL path was not found.", path),
             SysvolWorkerErrorCode.AccessDenied => new UnauthorizedAccessException("SYSVOL access was denied."),
-            SysvolWorkerErrorCode.TooLarge when maxBytes is not null => new SysvolFileTooLargeException(path, maxBytes.Value),
+            SysvolWorkerErrorCode.TooLarge when maxBytes is not null => new SysvolFileTooLargeException(path, (long)maxBytes.Value + 1, maxBytes.Value),
             SysvolWorkerErrorCode.InvalidRequest => new IOException("SYSVOL worker rejected the portable request."),
             SysvolWorkerErrorCode.IoFailure => new IOException("Portable SYSVOL I/O failed."),
             _ => new IOException("Portable SYSVOL worker failed.")
