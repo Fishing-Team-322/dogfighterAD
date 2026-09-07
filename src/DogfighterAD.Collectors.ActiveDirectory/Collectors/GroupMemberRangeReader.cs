@@ -83,6 +83,131 @@ internal sealed class GroupMemberRangeReader
         LdapSearchEntry entry,
         int expectedStart)
     {
+        var rangeNamedAttributes = entry.Attributes
+            .Where(attribute => attribute.Key.StartsWith(
+                "member;range=",
+                StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        if (rangeNamedAttributes.Length > 0)
+        {
+            var parsedRanges = new List<RangeAttribute>(rangeNamedAttributes.Length);
+            foreach (var attribute in rangeNamedAttributes)
+            {
+                if (!TryParseRange(attribute.Key, out var start, out var end, out var terminal))
+                {
+                    return MemberSegment.Invalid(
+                        $"LDAP response for '{entry.DistinguishedName}' returned malformed member range '{attribute.Key}'.");
+                }
+
+                parsedRanges.Add(new RangeAttribute(
+                    attribute.Key,
+                    start,
+                    end,
+                    terminal,
+                    attribute.Value
+                        .Where(value => value.Text is not null)
+                        .Select(value => value.Text!)
+                        .ToArray()));
+            }
+
+            var normalizedRanges = new List<RangeAttribute>();
+            foreach (var group in parsedRanges
+                         .GroupBy(attribute => attribute.Start)
+                         .OrderBy(group => group.Key))
+            {
+                // AD can echo an empty requested member;range=N-* placeholder together with the
+                // actual member;range=N-M attribute. Such a placeholder must not be interpreted as
+                // the terminal range when a substantive range for the same start is present.
+                var substantive = group
+                    .Where(attribute => attribute.Values.Count > 0 || !attribute.Terminal)
+                    .ToArray();
+
+                if (substantive.Length > 1)
+                {
+                    return MemberSegment.Invalid(
+                        $"LDAP response for '{entry.DistinguishedName}' returned ambiguous member ranges beginning at {group.Key}.");
+                }
+
+                RangeAttribute selected;
+                if (substantive.Length == 1)
+                {
+                    selected = substantive[0];
+                    if (group.Any(attribute =>
+                            !ReferenceEquals(attribute, selected) &&
+                            (attribute.Values.Count > 0 || !attribute.Terminal)))
+                    {
+                        return MemberSegment.Invalid(
+                            $"LDAP response for '{entry.DistinguishedName}' returned conflicting member ranges beginning at {group.Key}.");
+                    }
+                }
+                else
+                {
+                    var placeholders = group.ToArray();
+                    if (placeholders.Any(attribute => !attribute.Terminal) ||
+                        placeholders.Any(attribute => attribute.Values.Count > 0))
+                    {
+                        return MemberSegment.Invalid(
+                            $"LDAP response for '{entry.DistinguishedName}' returned an invalid empty member range beginning at {group.Key}.");
+                    }
+
+                    selected = placeholders[0];
+                }
+
+                normalizedRanges.Add(selected);
+            }
+
+            if (normalizedRanges.Count == 0 || normalizedRanges[0].Start != expectedStart)
+            {
+                var actual = normalizedRanges.Count == 0 ? "none" : normalizedRanges[0].Start.ToString();
+                return MemberSegment.Invalid(
+                    $"LDAP member range for '{entry.DistinguishedName}' began at {actual}, expected {expectedStart}.");
+            }
+
+            var values = new List<string>();
+            var expected = expectedStart;
+
+            for (var index = 0; index < normalizedRanges.Count; index++)
+            {
+                var attribute = normalizedRanges[index];
+                if (attribute.Start != expected)
+                {
+                    return MemberSegment.Invalid(
+                        $"LDAP member ranges for '{entry.DistinguishedName}' are not contiguous at index {expected}.");
+                }
+
+                values.AddRange(attribute.Values);
+
+                if (attribute.Terminal)
+                {
+                    if (index != normalizedRanges.Count - 1)
+                    {
+                        return MemberSegment.Invalid(
+                            $"LDAP member range '{attribute.Name}' for '{entry.DistinguishedName}' is terminal but additional ranges were returned.");
+                    }
+
+                    return MemberSegment.CompleteSegment(values);
+                }
+
+                if (!attribute.End.HasValue || attribute.End.Value < attribute.Start)
+                {
+                    return MemberSegment.Invalid(
+                        $"LDAP member range '{attribute.Name}' for '{entry.DistinguishedName}' is invalid.");
+                }
+
+                var declaredCount = checked(attribute.End.Value - attribute.Start + 1);
+                if (attribute.Values.Count != declaredCount)
+                {
+                    return MemberSegment.Invalid(
+                        $"LDAP member range '{attribute.Name}' for '{entry.DistinguishedName}' returned {attribute.Values.Count} value(s), expected {declaredCount}.");
+                }
+
+                expected = checked(attribute.End.Value + 1);
+            }
+
+            return MemberSegment.PartialSegment(values, expected);
+        }
+
         if (entry.Attributes.TryGetValue("member", out var completeValues))
         {
             return MemberSegment.CompleteSegment(
@@ -92,78 +217,14 @@ internal sealed class GroupMemberRangeReader
                     .ToArray());
         }
 
-        var rangedAttributes = entry.Attributes
-            .Where(attribute =>
-                TryParseRange(attribute.Key, out _, out _, out _))
-            .Select(attribute =>
-            {
-                TryParseRange(attribute.Key, out var start, out var end, out var terminal);
-                return new
-                {
-                    Name = attribute.Key,
-                    Start = start,
-                    End = end,
-                    Terminal = terminal,
-                    Values = attribute.Value
-                        .Where(value => value.Text is not null)
-                        .Select(value => value.Text!)
-                        .ToArray()
-                };
-            })
-            .OrderBy(attribute => attribute.Start)
-            .ToArray();
-
-        if (rangedAttributes.Length == 0)
+        // A group with no direct members legitimately has no member attribute on the initial read.
+        if (expectedStart == 0)
         {
-            // A group with no direct members legitimately has no member attribute.
-            if (expectedStart == 0)
-            {
-                return MemberSegment.CompleteSegment([]);
-            }
-
-            return MemberSegment.Invalid(
-                $"LDAP response for '{entry.DistinguishedName}' did not return the requested member range beginning at {expectedStart}.");
+            return MemberSegment.CompleteSegment([]);
         }
 
-        var first = rangedAttributes[0];
-        if (first.Start != expectedStart)
-        {
-            return MemberSegment.Invalid(
-                $"LDAP member range for '{entry.DistinguishedName}' began at {first.Start}, expected {expectedStart}.");
-        }
-
-        var values = new List<string>();
-        var expected = expectedStart;
-        var terminalSeen = false;
-
-        foreach (var attribute in rangedAttributes)
-        {
-            if (attribute.Start != expected)
-            {
-                return MemberSegment.Invalid(
-                    $"LDAP member ranges for '{entry.DistinguishedName}' are not contiguous at index {expected}.");
-            }
-
-            values.AddRange(attribute.Values);
-
-            if (attribute.Terminal)
-            {
-                terminalSeen = true;
-                break;
-            }
-
-            if (!attribute.End.HasValue || attribute.End.Value < attribute.Start)
-            {
-                return MemberSegment.Invalid(
-                    $"LDAP member range '{attribute.Name}' for '{entry.DistinguishedName}' is invalid.");
-            }
-
-            expected = checked(attribute.End.Value + 1);
-        }
-
-        return terminalSeen
-            ? MemberSegment.CompleteSegment(values)
-            : MemberSegment.PartialSegment(values, expected);
+        return MemberSegment.Invalid(
+            $"LDAP response for '{entry.DistinguishedName}' did not return the requested member range beginning at {expectedStart}.");
     }
 
     private static bool TryParseRange(
@@ -215,6 +276,13 @@ internal sealed class GroupMemberRangeReader
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(member => member, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+    private sealed record RangeAttribute(
+        string Name,
+        int Start,
+        int? End,
+        bool Terminal,
+        IReadOnlyList<string> Values);
 
     private sealed record MemberSegment(
         bool Valid,
