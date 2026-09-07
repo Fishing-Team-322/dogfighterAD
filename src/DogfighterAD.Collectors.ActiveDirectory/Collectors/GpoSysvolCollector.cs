@@ -109,6 +109,13 @@ public sealed class GpoSysvolCollector : ICollector
 
                 try
                 {
+                    // The isolated SYSVOL client intentionally serializes worker operations. Do not
+                    // attempt a file read while its enumeration operation still owns that operation
+                    // slot: the worker may be blocked writing its bounded enumeration channel while
+                    // the consumer waits for ReadFileAsync to acquire the same slot. Materialize only
+                    // validated metadata first, within MaxFilesPerGpo, then read after enumeration has
+                    // completed and released the worker operation boundary.
+                    var enumeratedFiles = new List<(SysvolFileEntry File, string RelativePath)>();
                     var count = 0;
                     await foreach (var file in client.EnumerateFilesAsync(sysvolScope.RootPath, cancellationToken))
                     {
@@ -131,6 +138,12 @@ public sealed class GpoSysvolCollector : ICollector
                             continue;
                         }
 
+                        enumeratedFiles.Add((file, relativePath));
+                    }
+
+                    foreach (var (file, relativePath) in enumeratedFiles)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
                         var kind = Classify(relativePath);
                         byte[] content;
 
