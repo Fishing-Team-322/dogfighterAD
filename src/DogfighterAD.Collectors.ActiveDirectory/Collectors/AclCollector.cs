@@ -159,6 +159,7 @@ public sealed class AclCollector : ICollector
                 var ace = new AdAce
                 {
                     TargetObjectId = targetId,
+                    AceIndex = aceIndex,
                     TrusteeSid = parsedAce.TrusteeSid,
                     AccessType = parsedAce.AccessType,
                     AccessMask = parsedAce.AccessMask,
@@ -168,6 +169,8 @@ public sealed class AclCollector : ICollector
                     IsInherited = parsedAce.IsInherited
                 };
 
+                // Preserve every normalized ACE instance and its source position. Duplicate ACEs
+                // and DACL order are semantically meaningful and must not collapse into a set.
                 aces.Add(ace);
                 AddAceFacts(
                     observations,
@@ -195,14 +198,8 @@ public sealed class AclCollector : ICollector
             .OrderBy(item => item.TargetObjectId.Value)
             .ToArray();
         var orderedAces = aces
-            .Distinct()
             .OrderBy(item => item.TargetObjectId.Value)
-            .ThenBy(item => item.TrusteeSid, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(item => item.AccessType)
-            .ThenBy(item => item.AccessMask)
-            .ThenBy(item => item.ObjectType)
-            .ThenBy(item => item.InheritedObjectType)
-            .ThenBy(item => item.AceFlags)
+            .ThenBy(item => item.AceIndex)
             .ToArray();
 
         return new CollectorResult(
