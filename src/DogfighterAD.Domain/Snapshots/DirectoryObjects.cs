@@ -121,6 +121,14 @@ public sealed record AdTrust
 public sealed record AdAce
 {
     public required AdObjectId TargetObjectId { get; init; }
+
+    /// <summary>
+    /// Zero-based position of this ACE in the source DACL. The position is part of the typed
+    /// snapshot representation because Windows access checks are order-sensitive and duplicate
+    /// ACEs are meaningful source evidence.
+    /// </summary>
+    public int AceIndex { get; init; }
+
     public required string TrusteeSid { get; init; }
     public required AdAccessControlType AccessType { get; init; }
     public uint AccessMask { get; init; }
