@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>DogfighterAD.PortableSysvolPrototype</AssemblyName>
+    <RootNamespace>DogfighterAD.PortableSysvolPrototype</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Kerberos.NET" Version="4.6.168" />
+    <PackageReference Include="SMBLibrary" Version="1.5.7.1" />
+  </ItemGroup>
+</Project>
