@@ -1,4 +1,5 @@
 using System.Net;
+using DogfighterAD.Collectors.ActiveDirectory.Ldap;
 
 namespace DogfighterAD.Cli;
 
@@ -12,6 +13,7 @@ internal sealed record ScanCommand : CliCommand
     public bool UseLdaps { get; init; }
     public int? LdapPort { get; init; }
     public string? Username { get; init; }
+    public LdapAuthenticationMode LdapAuthenticationMode { get; init; } = LdapAuthenticationMode.Negotiate;
     public IReadOnlySet<string> ApprovedSysvolAuthorities { get; init; } =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 }
@@ -69,6 +71,7 @@ internal static class CliArgumentParser
         var useLdaps = false;
         int? ldapPort = null;
         string? username = null;
+        var ldapAuthenticationMode = LdapAuthenticationMode.Negotiate;
         var authorities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (var index = 0; index < args.Count; index++)
@@ -125,6 +128,29 @@ internal static class CliArgumentParser
                     ldapPort = parsedPort;
                     break;
 
+                case "--ldap-auth":
+                    if (!TryReadValue(args, ref index, out var authValue))
+                    {
+                        return MissingValue(token);
+                    }
+
+                    if (string.Equals(authValue, "negotiate", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ldapAuthenticationMode = LdapAuthenticationMode.Negotiate;
+                    }
+                    else if (string.Equals(authValue, "ntlm", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ldapAuthenticationMode = LdapAuthenticationMode.Ntlm;
+                    }
+                    else
+                    {
+                        return new CliParseResult(
+                            null,
+                            false,
+                            "LDAP authentication mode must be 'negotiate' or 'ntlm'.");
+                    }
+                    break;
+
                 case "-u":
                 case "--username":
                 case "--user":
@@ -171,6 +197,14 @@ internal static class CliArgumentParser
                 "Explicit LDAP credentials require a DNS hostname target. Use a resolvable DC FQDN instead of an IP address.");
         }
 
+        if (ldapAuthenticationMode == LdapAuthenticationMode.Ntlm && string.IsNullOrWhiteSpace(username))
+        {
+            return new CliParseResult(
+                null,
+                false,
+                "--ldap-auth ntlm is an explicit compatibility mode and requires -u/--username.");
+        }
+
         return new CliParseResult(
             new ScanCommand
             {
@@ -180,6 +214,7 @@ internal static class CliArgumentParser
                 UseLdaps = useLdaps,
                 LdapPort = ldapPort,
                 Username = username,
+                LdapAuthenticationMode = ldapAuthenticationMode,
                 ApprovedSysvolAuthorities = authorities
             },
             ShowHelp: false,
