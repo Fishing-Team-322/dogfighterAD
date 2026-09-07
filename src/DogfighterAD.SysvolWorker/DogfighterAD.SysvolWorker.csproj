@@ -7,4 +7,9 @@
   <ItemGroup>
     <ProjectReference Include="..\DogfighterAD.Collectors.ActiveDirectory\DogfighterAD.Collectors.ActiveDirectory.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Kerberos.NET" Version="4.6.168" />
+    <PackageReference Include="SMBLibrary" Version="1.5.7.1" />
+  </ItemGroup>
 </Project>
