@@ -37,6 +37,12 @@ jobs:
       - name: Build
         run: dotnet build tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj --configuration Release --no-restore
 
+      - name: Restore portable SYSVOL prototype
+        run: dotnet restore prototypes/DogfighterAD.PortableSysvolPrototype/DogfighterAD.PortableSysvolPrototype.csproj
+
+      - name: Build portable SYSVOL prototype
+        run: dotnet build prototypes/DogfighterAD.PortableSysvolPrototype/DogfighterAD.PortableSysvolPrototype.csproj --configuration Release --no-restore
+
       - name: Unit tests
         run: dotnet run --project tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj --configuration Release --no-build
 
