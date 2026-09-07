@@ -26,7 +26,7 @@ public static class CapabilityContractCatalog
             [CollectionCapabilities.DirectoryComputers] = 1,
             [CollectionCapabilities.DirectoryOrganizationalUnits] = 1,
             [CollectionCapabilities.DirectoryMemberships] = 1,
-            [CollectionCapabilities.DirectoryAcls] = 1,
+            [CollectionCapabilities.DirectoryAcls] = 2,
             [CollectionCapabilities.DirectoryTrusts] = 1,
             [CollectionCapabilities.GroupPolicyMetadata] = 1,
             [CollectionCapabilities.GroupPolicyLinks] = 1,
