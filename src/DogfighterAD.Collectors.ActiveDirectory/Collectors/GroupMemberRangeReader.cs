@@ -1,3 +1,4 @@
+using System.Globalization;
 using DogfighterAD.Collectors.ActiveDirectory.Ldap;
 
 namespace DogfighterAD.Collectors.ActiveDirectory.Collectors;
@@ -12,6 +13,7 @@ internal sealed class GroupMemberRangeReader
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(initialEntry);
 
+        cancellationToken.ThrowIfCancellationRequested();
         var members = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var initial = ReadMemberSegment(initialEntry, expectedStart: 0);
         if (!initial.Valid)
@@ -98,6 +100,11 @@ internal sealed class GroupMemberRangeReader
                 {
                     return MemberSegment.Invalid(
                         $"LDAP response for '{entry.DistinguishedName}' returned malformed member range '{attribute.Key}'.");
+                }
+
+                if (attribute.Value.Any(value => value.Text is null || string.IsNullOrWhiteSpace(value.Text)))
+                {
+                    return MemberSegment.Invalid("LDAP member range contains a non-text or empty member value.");
                 }
 
                 parsedRanges.Add(new RangeAttribute(
@@ -195,7 +202,14 @@ internal sealed class GroupMemberRangeReader
                         $"LDAP member range '{attribute.Name}' for '{entry.DistinguishedName}' is invalid.");
                 }
 
-                var declaredCount = checked(attribute.End.Value - attribute.Start + 1);
+                // Do not turn an untrusted end index into an OverflowException that discards
+                // the entire collector result. There must also be a representable next index.
+                if (attribute.End.Value == int.MaxValue)
+                {
+                    return MemberSegment.Invalid("LDAP member range exceeds the supported index bound.");
+                }
+
+                var declaredCount = (long)attribute.End.Value - attribute.Start + 1;
                 if (attribute.Values.Count != declaredCount)
                 {
                     return MemberSegment.Invalid(
@@ -210,6 +224,13 @@ internal sealed class GroupMemberRangeReader
 
         if (entry.Attributes.TryGetValue("member", out var completeValues))
         {
+            // An un-ranged echo during a continuation does not prove completion. In particular,
+            // an empty member placeholder must not hide the missing requested range.
+            if (expectedStart != 0 || completeValues.Any(value => string.IsNullOrWhiteSpace(value.Text)))
+            {
+                return MemberSegment.Invalid("LDAP response omitted a usable requested member range.");
+            }
+
             return MemberSegment.CompleteSegment(
                 completeValues
                     .Where(value => value.Text is not null)
@@ -250,7 +271,7 @@ internal sealed class GroupMemberRangeReader
             return false;
         }
 
-        if (!int.TryParse(range[..separator], out start) || start < 0)
+        if (!int.TryParse(range[..separator], NumberStyles.None, CultureInfo.InvariantCulture, out start) || start < 0)
         {
             return false;
         }
@@ -262,7 +283,7 @@ internal sealed class GroupMemberRangeReader
             return true;
         }
 
-        if (!int.TryParse(endText, out var parsedEnd) || parsedEnd < start)
+        if (!int.TryParse(endText, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedEnd) || parsedEnd < start)
         {
             return false;
         }

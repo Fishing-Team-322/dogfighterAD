@@ -34,6 +34,15 @@ public sealed record DogadWriteOptions
     /// intentionally matches the strict reader payload budget used by CLI verified readback.
     /// </summary>
     public long MaxSnapshotBytes { get; init; } = DogadFormat.DefaultMaxSnapshotBytes;
+    public int MaxManifestBytes { get; init; } = DogadFormat.DefaultMaxManifestBytes;
+    public long MaxContainerBytes { get; init; } = DogadFormat.DefaultMaxContainerBytes;
+
+    public DogadReadOptions ToReadOptions() => new()
+    {
+        MaxSnapshotBytes = MaxSnapshotBytes,
+        MaxManifestBytes = MaxManifestBytes,
+        MaxContainerBytes = MaxContainerBytes
+    };
 }
 
 public sealed record DogadReadOptions
@@ -43,10 +52,11 @@ public sealed record DogadReadOptions
 
     /// <summary>
     /// Maximum bytes accepted for the complete ZIP container before ZipArchive is constructed.
-    /// Non-seekable inputs are copied with this bound and cancellation into a seekable buffer first.
+    /// Non-seekable inputs are spooled with this bound and cancellation into a private temporary file.
     /// </summary>
     public long MaxContainerBytes { get; init; } = DogadFormat.DefaultMaxContainerBytes;
 
+    public int MaxCentralDirectoryBytes { get; init; } = 64 * 1024;
     public int MaxEntryCount { get; init; } = 2;
     public int MaxEntryNameChars { get; init; } = 128;
 }

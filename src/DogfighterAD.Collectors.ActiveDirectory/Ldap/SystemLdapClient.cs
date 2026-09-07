@@ -64,7 +64,6 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
             throw;
         }
 
-        ReleaseNativeSetupSlotAfterPhysicalCompletion(setupTask);
         ObserveBackgroundFault(setupTask);
 
         try
@@ -72,10 +71,12 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
             var setup = await setupTask
                 .WaitAsync(_options.BindTimeout, cancellationToken)
                 .ConfigureAwait(false);
-            return new SystemLdapClient(
+            var client = new SystemLdapClient(
                 setup.Connection,
                 _options.RequestTimeout,
                 setup.CredentialLease);
+            NativeSetupSlots.Release();
+            return client;
         }
         catch (TimeoutException exception)
         {
@@ -95,10 +96,12 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
         }
         catch (CollectorOperationalException)
         {
+            NativeSetupSlots.Release();
             throw;
         }
         catch (Exception exception)
         {
+            NativeSetupSlots.Release();
             throw LdapFailureClassifier.Create(exception);
         }
     }
@@ -214,14 +217,6 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
         }
     }
 
-    private static void ReleaseNativeSetupSlotAfterPhysicalCompletion(Task task)
-    {
-        _ = task.ContinueWith(
-            static _ => NativeSetupSlots.Release(),
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
-    }
 
     private static void ObserveBackgroundFault(Task task)
     {
@@ -237,23 +232,23 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
         _ = setupTask.ContinueWith(
             static completedTask =>
             {
-                if (completedTask.Status != TaskStatus.RanToCompletion)
-                {
-                    return;
-                }
-
-                var setup = completedTask.Result;
                 try
                 {
-                    TryDispose(setup.Connection);
+                    if (completedTask.Status == TaskStatus.RanToCompletion)
+                    {
+                        var setup = completedTask.Result;
+                        try { TryDispose(setup.Connection); }
+                        finally { setup.CredentialLease?.Dispose(); }
+                    }
                 }
                 finally
                 {
-                    setup.CredentialLease?.Dispose();
+                    // Cleanup can itself enter native code. It owns the budget until it exits.
+                    NativeSetupSlots.Release();
                 }
             },
             CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
+            TaskContinuationOptions.None,
             TaskScheduler.Default);
     }
 
@@ -276,12 +271,12 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
             throw new ArgumentOutOfRangeException(nameof(options), "LDAP port must be between 1 and 65535.");
         }
 
-        if (options.BindTimeout <= TimeSpan.Zero)
+        if (options.BindTimeout <= TimeSpan.Zero || options.BindTimeout.TotalMilliseconds > int.MaxValue)
         {
             throw new ArgumentOutOfRangeException(nameof(options), "LDAP bind timeout must be greater than zero.");
         }
 
-        if (options.RequestTimeout <= TimeSpan.Zero)
+        if (options.RequestTimeout <= TimeSpan.Zero || options.RequestTimeout.TotalMilliseconds > int.MaxValue)
         {
             throw new ArgumentOutOfRangeException(nameof(options), "LDAP request timeout must be greater than zero.");
         }

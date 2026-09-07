@@ -1,3 +1,5 @@
+using System.Globalization;
+using DogfighterAD.Serialization;
 using System.Net;
 using DogfighterAD.Collectors.ActiveDirectory.Ldap;
 
@@ -10,6 +12,7 @@ internal sealed record ScanCommand : CliCommand
     public required string Target { get; init; }
     public required string OutputPath { get; init; }
     public string Profile { get; init; } = "minimal";
+    public int MaxSnapshotMiB { get; init; } = 512;
     public bool UseLdaps { get; init; }
     public int? LdapPort { get; init; }
     public string? Username { get; init; }
@@ -21,6 +24,7 @@ internal sealed record ScanCommand : CliCommand
 internal sealed record InspectCommand : CliCommand
 {
     public required string SnapshotPath { get; init; }
+    public int MaxSnapshotMiB { get; init; } = 512;
 }
 
 internal sealed record CliParseResult(
@@ -68,6 +72,7 @@ internal static class CliArgumentParser
         string? target = null;
         string? output = null;
         var profile = "minimal";
+        var maxSnapshotMiB = 512;
         var useLdaps = false;
         int? ldapPort = null;
         string? username = null;
@@ -89,6 +94,13 @@ internal static class CliArgumentParser
 
             switch (token)
             {
+                case "--max-snapshot-mib":
+                    if (!TryReadValue(args, ref index, out var budgetText) ||
+                        !int.TryParse(budgetText, NumberStyles.None, CultureInfo.InvariantCulture, out maxSnapshotMiB) ||
+                        maxSnapshotMiB is < 1 or > 1024)
+                        return new CliParseResult(null, false, "Snapshot budget must be 1 through 1024 MiB.");
+                    break;
+
                 case "--target":
                     if (!TryReadValue(args, ref index, out target))
                     {
@@ -211,6 +223,7 @@ internal static class CliArgumentParser
                 Target = target,
                 OutputPath = output,
                 Profile = profile,
+                MaxSnapshotMiB = maxSnapshotMiB,
                 UseLdaps = useLdaps,
                 LdapPort = ldapPort,
                 Username = username,
@@ -224,6 +237,7 @@ internal static class CliArgumentParser
     private static CliParseResult ParseInspect(IReadOnlyList<string> args)
     {
         string? snapshot = null;
+        var maxSnapshotMiB = 512;
 
         for (var index = 0; index < args.Count; index++)
         {
@@ -235,6 +249,13 @@ internal static class CliArgumentParser
 
             switch (token)
             {
+                case "--max-snapshot-mib":
+                    if (!TryReadValue(args, ref index, out var budgetText) ||
+                        !int.TryParse(budgetText, NumberStyles.None, CultureInfo.InvariantCulture, out maxSnapshotMiB) ||
+                        maxSnapshotMiB is < 1 or > 1024)
+                        return new CliParseResult(null, false, "Snapshot budget must be 1 through 1024 MiB.");
+                    break;
+
                 case "--snapshot":
                     if (!TryReadValue(args, ref index, out snapshot))
                     {
@@ -253,7 +274,7 @@ internal static class CliArgumentParser
         }
 
         return new CliParseResult(
-            new InspectCommand { SnapshotPath = snapshot },
+            new InspectCommand { SnapshotPath = snapshot, MaxSnapshotMiB = maxSnapshotMiB },
             ShowHelp: false,
             Error: null);
     }
@@ -295,4 +316,17 @@ internal static class CliArgumentParser
 
     private static bool IsHelp(string value) =>
         value is "--help" or "-h" or "/?";
+}
+
+internal static class ArtifactBudgets
+{
+    public static DogadWriteOptions ForMiB(int value)
+    {
+        if (value is < 1 or > 1024) throw new ArgumentOutOfRangeException(nameof(value));
+        return new DogadWriteOptions
+        {
+            MaxSnapshotBytes = value * 1024L * 1024,
+            MaxContainerBytes = (value + 64L) * 1024 * 1024
+        };
+    }
 }

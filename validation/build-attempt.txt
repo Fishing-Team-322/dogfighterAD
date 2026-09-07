@@ -1,0 +1,3 @@
+The .NET 10 SDK is required; no build or tests were run.
+
+Exit code: 127

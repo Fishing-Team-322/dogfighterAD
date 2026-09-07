@@ -6,6 +6,7 @@ namespace DogfighterAD.Application.Collection;
 
 public sealed class CollectionExecutor
 {
+    private static readonly OperationLifetimeLimiter ProcessOperations = new(32);
     private readonly SnapshotFragmentMerger _fragmentMerger;
     private readonly TimeProvider _timeProvider;
 
@@ -43,13 +44,15 @@ public sealed class CollectionExecutor
                 "Collection plan MaxConcurrency must be at least 1.");
         }
 
-        if (plan.ExecutionPolicy.CollectorTimeout <= TimeSpan.Zero)
+        if (plan.ExecutionPolicy.CollectorTimeout <= TimeSpan.Zero ||
+            plan.ExecutionPolicy.CollectorTimeout.TotalMilliseconds > int.MaxValue)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(plan),
                 "Collection plan CollectorTimeout must be greater than zero.");
         }
 
+        var physicalOperations = new OperationLifetimeLimiter(plan.ExecutionPolicy.MaxConcurrency);
         var startedAt = _timeProvider.GetUtcNow();
         var fragments = new List<SnapshotFragment>();
         var executionRecords = new List<CollectorExecutionRecord>();
@@ -72,6 +75,7 @@ public sealed class CollectionExecutor
                         scanId,
                         target,
                         availableData,
+                        physicalOperations,
                         cancellationToken,
                         progress).ConfigureAwait(false);
                 }
@@ -112,6 +116,7 @@ public sealed class CollectionExecutor
         Guid scanId,
         string target,
         SnapshotFragment availableData,
+        OperationLifetimeLimiter physicalOperations,
         CancellationToken cancellationToken,
         Action<CollectionProgressEvent>? progress)
     {
@@ -165,8 +170,12 @@ public sealed class CollectionExecutor
         }
 
         var startedAt = _timeProvider.GetUtcNow();
-        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var collectorToken = linkedCancellation.Token;
         linkedCancellation.CancelAfter(policy.CollectorTimeout);
+        IDisposable? scanLease = null;
+        IDisposable? processLease = null;
+        var lifetimeTransferred = false;
 
         ReportProgress(progress, new CollectionProgressEvent
         {
@@ -178,6 +187,15 @@ public sealed class CollectionExecutor
 
         try
         {
+            if (!physicalOperations.TryAcquire(out scanLease) ||
+                !ProcessOperations.TryAcquire(out processLease))
+            {
+                throw new CollectorOperationalException(
+                    "collection.collector.capacity-exhausted",
+                    "Unfinished collector operations still own the physical execution budget. " +
+                    "No replacement operation was started.");
+            }
+
             var context = new CollectionContext(
                 scanId,
                 target,
@@ -189,16 +207,31 @@ public sealed class CollectionExecutor
             // the linked timeout to the returned task so synchronous pre-await blocking cannot
             // bypass the collection timeout.
             var collectorTask = Task.Run(
-                () => collector.CollectAsync(context, linkedCancellation.Token),
+                async () =>
+                {
+                    try
+                    {
+                        collectorToken.ThrowIfCancellationRequested();
+                        return await collector.CollectAsync(context, collectorToken).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        linkedCancellation.Dispose();
+                        scanLease!.Dispose();
+                        processLease!.Dispose();
+                    }
+                },
                 CancellationToken.None);
+            lifetimeTransferred = true;
             ObserveBackgroundFault(collectorTask);
 
             var result = await collectorTask
-                .WaitAsync(linkedCancellation.Token)
+                .WaitAsync(collectorToken)
                 .ConfigureAwait(false);
 
             // A collector may return successfully after cancellation was requested.
-            linkedCancellation.Token.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
+            collectorToken.ThrowIfCancellationRequested();
             var normalized = ValidateAndNormalizeResult(planned, result);
             var completedAt = _timeProvider.GetUtcNow();
 
@@ -234,7 +267,7 @@ public sealed class CollectionExecutor
             });
             throw;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (collectorToken.IsCancellationRequested)
         {
             var completedAt = _timeProvider.GetUtcNow();
             const string issueCode = "collection.collector.timeout";
@@ -369,6 +402,15 @@ public sealed class CollectionExecutor
                     StartedAt = startedAt,
                     CompletedAt = completedAt
                 });
+        }
+        finally
+        {
+            if (!lifetimeTransferred)
+            {
+                linkedCancellation.Dispose();
+                scanLease?.Dispose();
+                processLease?.Dispose();
+            }
         }
     }
 

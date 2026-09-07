@@ -4,7 +4,7 @@
     <AssemblyName>dogfighter</AssemblyName>
     <RootNamespace>DogfighterAD.Cli</RootNamespace>
     <Version>0.1.0</Version>
-    <InformationalVersion>0.1.0-dev</InformationalVersion>
+    <InformationalVersion>0.1.0-review-fix</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

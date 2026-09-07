@@ -14,6 +14,7 @@ internal sealed record ScanWorkflowRequest
     public required CollectionProfile Profile { get; init; }
     public required IReadOnlyCollection<ICollector> Collectors { get; init; }
     public Action<CollectionProgressEvent>? Progress { get; init; }
+    public DogadWriteOptions ArtifactOptions { get; init; } = new();
 }
 
 internal sealed record ScanWorkflowResult(
@@ -84,6 +85,7 @@ internal sealed class ScanWorkflow
         await WriteVerifiedArtifactAsync(
                 snapshot,
                 request.OutputPath,
+                request.ArtifactOptions,
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -93,6 +95,7 @@ internal sealed class ScanWorkflow
     private async Task WriteVerifiedArtifactAsync(
         AdSnapshot snapshot,
         string outputPath,
+        DogadWriteOptions artifactOptions,
         CancellationToken cancellationToken)
     {
         var fullOutputPath = Path.GetFullPath(outputPath);
@@ -114,7 +117,7 @@ internal sealed class ScanWorkflow
                              FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
                 await _serializer
-                    .WriteAsync(snapshot, destination, cancellationToken)
+                    .WriteAsync(snapshot, destination, artifactOptions, cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -128,7 +131,7 @@ internal sealed class ScanWorkflow
                              FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
                 verified = await _serializer
-                    .ReadAsync(source, cancellationToken: cancellationToken)
+                    .ReadAsync(source, artifactOptions.ToReadOptions(), cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -139,6 +142,7 @@ internal sealed class ScanWorkflow
                     "The written .dogad artifact did not round-trip to the expected snapshot identity/status.");
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             File.Move(temporaryPath, fullOutputPath, overwrite: true);
         }
         finally

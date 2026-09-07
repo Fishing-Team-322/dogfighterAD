@@ -56,6 +56,12 @@ internal static class CliApplication
             await error.WriteLineAsync("Operation canceled.").ConfigureAwait(false);
             return CliExitCodes.Canceled;
         }
+        catch (DogadArtifactException exception)
+        {
+            // Stable domain codes are safe to print; arbitrary imported payload text is not.
+            await error.WriteLineAsync($"Artifact operation failed ({exception.Code}).").ConfigureAwait(false);
+            return CliExitCodes.RuntimeFailure;
+        }
         catch (Exception exception)
         {
             await error.WriteLineAsync(
@@ -119,7 +125,8 @@ internal static class CliApplication
                     ProductVersion = productVersion,
                     Profile = profile,
                     Collectors = collectors,
-                    Progress = WriteProgress
+                    Progress = WriteProgress,
+                    ArtifactOptions = ArtifactBudgets.ForMiB(command.MaxSnapshotMiB)
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -177,7 +184,7 @@ internal static class CliApplication
             bufferSize: 64 * 1024,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
         var snapshot = await serializer
-            .ReadAsync(source, cancellationToken: cancellationToken)
+            .ReadAsync(source, ArtifactBudgets.ForMiB(command.MaxSnapshotMiB).ToReadOptions(), cancellationToken)
             .ConfigureAwait(false);
 
         await CoverageSummaryWriter
@@ -192,10 +199,10 @@ internal static class CliApplication
         await writer.WriteLineAsync().ConfigureAwait(false);
         await writer.WriteLineAsync("Usage:").ConfigureAwait(false);
         await writer.WriteLineAsync(
-                "  dogfighter scan --target <host-or-domain> --output <snapshot.dogad> [--profile minimal|audit-full] [-u <DOMAIN\\user|user@domain>] [--ldap-auth negotiate|ntlm] [--ldaps] [--ldap-port <1-65535>] [--sysvol-authority <host>]...")
+                "  dogfighter scan --target <host-or-domain> --output <snapshot.dogad> [--profile minimal|audit-full] [--max-snapshot-mib <1-1024>] [-u <DOMAIN\\user|user@domain>] [--ldap-auth negotiate|ntlm] [--ldaps] [--ldap-port <1-65535>] [--sysvol-authority <host>]...")
             .ConfigureAwait(false);
         await writer.WriteLineAsync(
-                "  dogfighter inspect --snapshot <snapshot.dogad>")
+                "  dogfighter inspect --snapshot <snapshot.dogad> [--max-snapshot-mib <1-1024>]")
             .ConfigureAwait(false);
         await writer.WriteLineAsync().ConfigureAwait(false);
         await writer.WriteLineAsync(

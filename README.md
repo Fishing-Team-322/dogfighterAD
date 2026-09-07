@@ -1,5 +1,7 @@
 # DogfighterAD
 
+> Review-fix source package: see [PATCH_NOTES_RU.md](PATCH_NOTES_RU.md) for the exact baseline, fixes, compatibility limits and validation status. Run `scripts/verify.sh` or `scripts/verify.ps1` with .NET 10 before deployment.
+
 DogfighterAD is a snapshot-first, evidence-first Active Directory security assessment platform.
 
 The project is built around a strict separation between collection, normalization, analysis, evidence, storage, and reporting. The first development phase is read-only: collect security-relevant Active Directory facts into a versioned snapshot that can be analyzed and re-analyzed offline.
@@ -28,9 +30,9 @@ dogfighter scan --target dc01.mini.lab --profile minimal --output .\mini.dogad
 dogfighter inspect --snapshot .\mini.dogad
 ```
 
-`scan` uses the current OS security context for LDAP Negotiate authentication, writes a temporary deterministic `.dogad`, reads it back through the strict artifact reader, and only then replaces the requested output file. Password/username command-line options are intentionally unsupported. `inspect` is offline and prints snapshot/coverage/count summaries.
+`scan` uses the current OS security context for LDAP Negotiate authentication, writes a temporary deterministic `.dogad`, reads it back through the strict artifact reader, and only then replaces the requested output file. Explicit usernames are accepted with `-u`; passwords are read only from the hidden prompt. NTLM requires explicit `--ldap-auth ntlm`. Non-TLS LDAP requires signing and sealing; `--ldaps` keeps platform certificate validation. `inspect` is offline and prints snapshot/coverage/count summaries.
 
-The CLI and offline synthetic round trip are covered by CI, but **no live AD/MINILAB/GOAD validation has yet been recorded**. Analysis rules, reports, diff/retest and graph analysis are not implemented yet.
+The CLI and offline synthetic round trip are covered by CI, but **this review-fix package has not been validated against live AD/SMB**. Analysis rules, reports, diff/retest and graph analysis are not implemented yet.
 
 ## Documentation
 

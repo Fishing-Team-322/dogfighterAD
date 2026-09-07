@@ -140,7 +140,7 @@ public sealed class DogadArtifactSerializerTests
 
         mutable.Position = 0;
         var exception = await Assert.ThrowsAsync<DogadArtifactException>(() =>
-            serializer.ReadAsync(mutable, cancellationToken: cancellationToken));
+            serializer.ReadAsync(mutable, new DogadReadOptions { MaxEntryCount = 3 }, cancellationToken));
 
         Assert.Equal("dogad.container.entry-unexpected", exception.Code);
     }

@@ -38,6 +38,36 @@ public static class SnapshotInvariantValidator
                 "Snapshot initial target must be present."));
         }
 
+        if (string.IsNullOrWhiteSpace(snapshot.Metadata.ProductVersion) ||
+            snapshot.Metadata.RequestedCapabilities.Any(string.IsNullOrWhiteSpace))
+        {
+            violations.Add(new("snapshot.metadata.invalid", "Product version and requested capability identifiers must be nonempty."));
+        }
+        if (!Enum.IsDefined(snapshot.Metadata.CompletionStatus))
+            violations.Add(new("snapshot.status.invalid", "Snapshot completion status is not defined."));
+        foreach (var item in snapshot.Coverage)
+        {
+            if (!Enum.IsDefined(item.Status) || item.ObservedItemCount < 0 ||
+                item.Issues.Any(issue => !Enum.IsDefined(issue.Severity)))
+                violations.Add(new("snapshot.coverage.invalid", "Coverage contains an undefined status/severity or a negative count."));
+        }
+        foreach (var fact in snapshot.Observations)
+        {
+            if (!Enum.IsDefined(fact.Disposition) || !Enum.IsDefined(fact.ValueKind))
+                violations.Add(new("snapshot.fact.enum-invalid", "Observed fact has an undefined disposition or value kind."));
+        }
+        foreach (var setting in snapshot.Content.GroupPolicySettings)
+        {
+            if (!Enum.IsDefined(setting.Disposition) || !Enum.IsDefined(setting.ValueKind) ||
+                !Enum.IsDefined(setting.Kind) || !Enum.IsDefined(setting.Scope))
+                violations.Add(new("snapshot.gpo-setting.enum-invalid", "GPO setting contains an undefined enumeration value."));
+        }
+        if (snapshot.Content.Aces.Any(ace => !Enum.IsDefined(ace.AccessType)) ||
+            snapshot.Content.SecurityDescriptors.Any(item => !Enum.IsDefined(item.DaclState)) ||
+            snapshot.Content.GroupPolicyFiles.Any(item => !Enum.IsDefined(item.Kind)) ||
+            snapshot.Content.GroupMemberships.Any(item => !Enum.IsDefined(item.Source)))
+            violations.Add(new("snapshot.content.enum-invalid", "Snapshot content contains an undefined enumeration value."));
+
         ValidateDirectoryObjectIdentities(snapshot.Content, violations);
         ValidateRelationships(snapshot.Content, violations);
         ValidateObservations(snapshot.Observations, violations);

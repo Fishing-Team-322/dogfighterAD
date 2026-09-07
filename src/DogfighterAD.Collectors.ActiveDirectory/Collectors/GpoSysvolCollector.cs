@@ -117,28 +117,50 @@ public sealed class GpoSysvolCollector : ICollector
                     // completed and released the worker operation boundary.
                     var enumeratedFiles = new List<(SysvolFileEntry File, string RelativePath)>();
                     var count = 0;
-                    await foreach (var file in client.EnumerateFilesAsync(sysvolScope.RootPath, cancellationToken))
+                    try
                     {
-                        count++;
-                        if (count > _options.MaxFilesPerGpo)
+                        await foreach (var file in client.EnumerateFilesAsync(sysvolScope.RootPath, cancellationToken))
                         {
-                            issues.Add(Issue(
-                                "collection.gpo.sysvol.file-count-limit",
-                                $"GPO {gpo.GpoGuid:D} exceeded the {_options.MaxFilesPerGpo} file inventory limit.",
-                                context.Target));
-                            break;
-                        }
+                            count++;
+                            if (count > _options.MaxFilesPerGpo)
+                            {
+                                issues.Add(Issue(
+                                    "collection.gpo.sysvol.file-count-limit",
+                                    $"GPO {gpo.GpoGuid:D} exceeded the {_options.MaxFilesPerGpo} file inventory limit.",
+                                    context.Target));
+                                break;
+                            }
 
-                        if (!SysvolPathPolicy.TryValidateFile(sysvolScope, file, out var relativePath))
-                        {
-                            issues.Add(Issue(
-                                "collection.gpo.sysvol.file-out-of-scope",
-                                $"GPO {gpo.GpoGuid:D} enumeration returned a file outside the approved policy root.",
-                                context.Target));
-                            continue;
-                        }
+                            if (!SysvolPathPolicy.TryValidateFile(sysvolScope, file, out var relativePath))
+                            {
+                                issues.Add(Issue(
+                                    "collection.gpo.sysvol.file-out-of-scope",
+                                    $"GPO {gpo.GpoGuid:D} enumeration returned a file outside the approved policy root.",
+                                    context.Target));
+                                continue;
+                            }
 
-                        enumeratedFiles.Add((file, relativePath));
+                            enumeratedFiles.Add((file, relativePath));
+                        }
+                    }
+                    catch (DirectoryNotFoundException)
+                    {
+                        issues.Add(Issue("collection.gpo.sysvol.directory-not-found",
+                            $"SYSVOL directory for GPO {gpo.GpoGuid:D} was not found.", context.Target));
+                    }
+                    catch (IOException)
+                    {
+                        issues.Add(Issue(
+                            "collection.gpo.sysvol.enumeration-failed",
+                            $"SYSVOL enumeration for GPO {gpo.GpoGuid:D} was incomplete; collected metadata is retained.",
+                            context.Target));
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        issues.Add(Issue(
+                            "collection.gpo.sysvol.directory-access-denied",
+                            $"SYSVOL enumeration for GPO {gpo.GpoGuid:D} encountered a denied directory; collected metadata is retained.",
+                            context.Target));
                     }
 
                     foreach (var (file, relativePath) in enumeratedFiles)

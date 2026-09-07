@@ -37,16 +37,16 @@ internal static class SysvolPolicyParsers
             "LSAAnonymousNameLookup"
         };
 
-    private static readonly HashSet<string> SafeWholeSecurityTemplateSections =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            "Event Audit",
-            "Privilege Rights",
-            "Group Membership",
-            "Kerberos Policy",
-            "Unicode",
-            "Version"
-        };
+    private static readonly HashSet<string> SafeEventAuditKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "AuditSystemEvents", "AuditLogonEvents", "AuditObjectAccess", "AuditPrivilegeUse",
+        "AuditPolicyChange", "AuditAccountManage", "AuditProcessTracking", "AuditDSAccess", "AuditAccountLogon"
+    };
+
+    private static readonly HashSet<string> SafeKerberosKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "MaxTicketAge", "MaxRenewAge", "MaxServiceAge", "MaxClockSkew", "TicketValidateClient"
+    };
 
     public static ParsedSettingsResult ParseGptIni(byte[] bytes, string relativePath) =>
         ParseIni(bytes, relativePath, GpoSettingKind.Ini, GpoPolicyScope.Common);
@@ -240,7 +240,7 @@ internal static class SysvolPolicyParsers
 
             var key = line[..separator].Trim();
             var value = line[(separator + 1)..].Trim();
-            var disposition = DetermineIniDisposition(kind, section, key);
+            var disposition = DetermineIniDisposition(kind, section, key, value);
 
             settings.Add(new ParsedSetting
             {
@@ -263,7 +263,8 @@ internal static class SysvolPolicyParsers
     private static FactDisposition DetermineIniDisposition(
         GpoSettingKind kind,
         string section,
-        string key)
+        string key,
+        string value)
     {
         if (LooksSensitiveKey(key))
         {
@@ -272,7 +273,8 @@ internal static class SysvolPolicyParsers
 
         if (kind == GpoSettingKind.Ini)
         {
-            return SafeGptIniKeys.Contains(key)
+            return section.Equals("General", StringComparison.OrdinalIgnoreCase) && SafeGptIniKeys.Contains(key) &&
+                (!key.Equals("Version", StringComparison.OrdinalIgnoreCase) || IsInteger(value))
                 ? FactDisposition.Stored
                 : FactDisposition.MetadataOnly;
         }
@@ -284,14 +286,57 @@ internal static class SysvolPolicyParsers
 
         if (section.Equals("System Access", StringComparison.OrdinalIgnoreCase))
         {
-            return SafeSystemAccessKeys.Contains(key)
+            var accountName = key.Equals("NewAdministratorName", StringComparison.OrdinalIgnoreCase) ||
+                key.Equals("NewGuestName", StringComparison.OrdinalIgnoreCase);
+            return SafeSystemAccessKeys.Contains(key) && (accountName || IsInteger(value))
                 ? FactDisposition.Stored
                 : FactDisposition.MetadataOnly;
         }
 
-        return SafeWholeSecurityTemplateSections.Contains(section)
-            ? FactDisposition.Stored
-            : FactDisposition.MetadataOnly;
+        // Approving an entire section exports arbitrary attacker-controlled keys. Require both
+        // the known section/key and its expected value shape instead.
+        var allowed = section.ToUpperInvariant() switch
+        {
+            "EVENT AUDIT" => SafeEventAuditKeys.Contains(key) && IsInteger(value),
+            "KERBEROS POLICY" => SafeKerberosKeys.Contains(key) && IsInteger(value),
+            "UNICODE" => key.Equals("Unicode", StringComparison.OrdinalIgnoreCase) && bool.TryParse(value, out _),
+            "VERSION" => (key.Equals("Revision", StringComparison.OrdinalIgnoreCase) && IsInteger(value)) ||
+                (key.Equals("signature", StringComparison.OrdinalIgnoreCase) && value.Trim('"').Equals("$CHICAGO$", StringComparison.OrdinalIgnoreCase)),
+            "PRIVILEGE RIGHTS" => IsPrivilegeName(key) && IsSidList(value),
+            "GROUP MEMBERSHIP" => IsMembershipKey(key) && IsSidList(value),
+            _ => false
+        };
+        return allowed ? FactDisposition.Stored : FactDisposition.MetadataOnly;
+    }
+
+    private static bool IsInteger(string value) =>
+        long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
+
+    private static bool IsPrivilegeName(string key) =>
+        key.Length <= 100 && key.StartsWith("Se", StringComparison.Ordinal) &&
+        (key.EndsWith("Privilege", StringComparison.Ordinal) || key.EndsWith("LogonRight", StringComparison.Ordinal)) &&
+        key.All(char.IsAsciiLetter);
+
+    private static bool IsMembershipKey(string key)
+    {
+        var separator = key.LastIndexOf("__", StringComparison.Ordinal);
+        return separator > 0 && IsSid(key[..separator]) &&
+            (key[(separator + 2)..].Equals("Members", StringComparison.OrdinalIgnoreCase) ||
+             key[(separator + 2)..].Equals("Memberof", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsSidList(string value) =>
+        value.Length == 0 || value.Split(',').All(item => IsSid(item.Trim()));
+
+    private static bool IsSid(string value)
+    {
+        var sid = value.StartsWith('*') ? value[1..] : value;
+        if (sid.Length > 184) return false;
+        var parts = sid.Split('-');
+        return parts.Length is >= 4 and <= 18 && parts[0] == "S" && parts[1] == "1" &&
+            ulong.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out var authority) &&
+            authority <= 0xffffffffffffUL &&
+            parts.Skip(3).All(part => uint.TryParse(part, NumberStyles.None, CultureInfo.InvariantCulture, out _));
     }
 
     private static bool LooksSensitiveKey(string key)
@@ -378,15 +423,15 @@ internal static class SysvolPolicyParsers
                 type == 7 ? FactValueKind.Json : FactValueKind.Text,
                 FactDisposition.MetadataOnly),
             3 => new RegistryDataNormalization(null, FactValueKind.Binary, FactDisposition.MetadataOnly),
-            4 when data.Length >= 4 => new RegistryDataNormalization(
+            4 when data.Length == 4 => new RegistryDataNormalization(
                 BinaryPrimitives.ReadUInt32LittleEndian(data).ToString(CultureInfo.InvariantCulture),
                 FactValueKind.Integer,
                 FactDisposition.Stored),
-            5 when data.Length >= 4 => new RegistryDataNormalization(
+            5 when data.Length == 4 => new RegistryDataNormalization(
                 BinaryPrimitives.ReadUInt32BigEndian(data).ToString(CultureInfo.InvariantCulture),
                 FactValueKind.Integer,
                 FactDisposition.Stored),
-            11 when data.Length >= 8 => new RegistryDataNormalization(
+            11 when data.Length == 8 => new RegistryDataNormalization(
                 BinaryPrimitives.ReadUInt64LittleEndian(data).ToString(CultureInfo.InvariantCulture),
                 FactValueKind.Integer,
                 FactDisposition.Stored),

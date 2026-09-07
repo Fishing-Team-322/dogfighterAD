@@ -33,6 +33,9 @@ public sealed class DogadArtifactSerializer
             throw new ArgumentException("Destination stream must be writable.", nameof(destination));
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+        if (destination.CanSeek && (destination.Position != 0 || destination.Length != 0))
+            throw new ArgumentException("Destination must be an empty stream at position zero.", nameof(destination));
         ValidateWriteOptions(options);
 
         var violations = SnapshotInvariantValidator.Validate(snapshot);
@@ -41,15 +44,23 @@ public sealed class DogadArtifactSerializer
             throw DogadArtifactException.InvalidSnapshot(violations);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         var canonical = SnapshotCanonicalizer.Canonicalize(snapshot);
-        var payload = JsonSerializer.SerializeToUtf8Bytes(canonical, JsonOptions);
+        using var payloadBuffer = new MemoryStream();
+        using (var boundedPayload = new BudgetWriteStream(
+                   payloadBuffer, options.MaxSnapshotBytes, "dogad.payload.write-limit-exceeded"))
+        {
+            await JsonSerializer.SerializeAsync(boundedPayload, canonical, JsonOptions, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        var payload = payloadBuffer.GetBuffer().AsMemory(0, checked((int)payloadBuffer.Length));
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (payload.LongLength > options.MaxSnapshotBytes)
+        if (payload.Length > options.MaxSnapshotBytes)
         {
             throw new DogadArtifactException(
                 "dogad.payload.write-limit-exceeded",
-                $"Canonical snapshot payload is {payload.LongLength} bytes and exceeds the configured write limit of {options.MaxSnapshotBytes} bytes.");
+                $"Canonical snapshot payload is {payload.Length} bytes and exceeds the configured write limit of {options.MaxSnapshotBytes} bytes.");
         }
 
         var manifest = new DogadManifest
@@ -62,12 +73,20 @@ public sealed class DogadArtifactSerializer
             ProductVersion = canonical.Metadata.ProductVersion,
             SnapshotCompletedAt = canonical.Metadata.CompletedAt,
             PayloadPath = DogadFormat.SnapshotEntryName,
-            PayloadLength = payload.LongLength,
-            PayloadSha256 = Convert.ToHexStringLower(SHA256.HashData(payload))
+            PayloadLength = payload.Length,
+            PayloadSha256 = Convert.ToHexStringLower(SHA256.HashData(payload.Span))
         };
-        var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, JsonOptions);
-
-        using var archive = new ZipArchive(destination, ZipArchiveMode.Create, leaveOpen: true);
+        using var manifestBuffer = new MemoryStream();
+        using (var boundedManifest = new BudgetWriteStream(
+                   manifestBuffer, options.MaxManifestBytes, "dogad.manifest.write-limit-exceeded"))
+        {
+            await JsonSerializer.SerializeAsync(boundedManifest, manifest, JsonOptions, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        var manifestBytes = manifestBuffer.ToArray();
+        using var boundedDestination = new BudgetWriteStream(
+            destination, options.MaxContainerBytes, "dogad.container.write-limit-exceeded");
+        using var archive = new ZipArchive(boundedDestination, ZipArchiveMode.Create, leaveOpen: true);
         await WriteEntryAsync(
             archive,
             DogadFormat.ManifestEntryName,
@@ -94,7 +113,7 @@ public sealed class DogadArtifactSerializer
         var limits = options ?? new DogadReadOptions();
         ValidateReadOptions(limits);
 
-        MemoryStream? boundedCopy = null;
+        FileStream? boundedCopy = null;
         try
         {
             Stream archiveSource;
@@ -112,6 +131,7 @@ public sealed class DogadArtifactSerializer
                 archiveSource = boundedCopy;
             }
 
+            await ZipContainerPreflight.ValidateAsync(archiveSource, limits, cancellationToken).ConfigureAwait(false);
             using var archive = new ZipArchive(archiveSource, ZipArchiveMode.Read, leaveOpen: true);
             ValidateContainerEntries(archive, limits);
             var manifestEntry = GetRequiredUniqueEntry(archive, DogadFormat.ManifestEntryName);
@@ -189,19 +209,19 @@ public sealed class DogadArtifactSerializer
             }
 
             var canonical = SnapshotCanonicalizer.Canonicalize(snapshot);
-            var canonicalPayload = JsonSerializer.SerializeToUtf8Bytes(canonical, JsonOptions);
-            if (!payload.AsSpan().SequenceEqual(canonicalPayload))
-            {
-                throw new DogadArtifactException(
-                    "dogad.payload.noncanonical",
-                    $"Snapshot payload does not match serialization '{DogadFormat.SerializationId}'.");
-            }
+            using var comparison = new CanonicalComparisonStream(payload);
+            await JsonSerializer.SerializeAsync(comparison, canonical, JsonOptions, cancellationToken).ConfigureAwait(false);
+            comparison.ValidateComplete();
 
             return canonical;
         }
         catch (DogadArtifactException)
         {
             throw;
+        }
+        catch (EndOfStreamException exception)
+        {
+            throw new DogadArtifactException("dogad.container.invalid", "The .dogad container is truncated.", exception);
         }
         catch (InvalidDataException exception)
         {
@@ -222,7 +242,7 @@ public sealed class DogadArtifactSerializer
     private static async Task WriteEntryAsync(
         ZipArchive archive,
         string name,
-        byte[] bytes,
+        ReadOnlyMemory<byte> bytes,
         CancellationToken cancellationToken)
     {
         var entry = archive.CreateEntry(name, CompressionLevel.NoCompression);
@@ -234,52 +254,55 @@ public sealed class DogadArtifactSerializer
 
     private static void ValidateSeekableContainerLength(Stream source, long maxContainerBytes)
     {
-        var remaining = source.Length - source.Position;
-        if (remaining < 0 || remaining > maxContainerBytes)
+        if (source.Position != 0)
         {
-            throw new DogadArtifactException(
-                "dogad.container.too-large",
-                $".dogad container size {Math.Max(0, remaining)} exceeds the configured input limit of {maxContainerBytes} bytes.");
+            throw new DogadArtifactException("dogad.container.position-invalid", "A seekable .dogad stream must start at position zero.");
+        }
+        if (source.Length < 0 || source.Length > maxContainerBytes)
+        {
+            throw new DogadArtifactException("dogad.container.too-large", "The complete .dogad container exceeds the configured input budget.");
         }
     }
 
-    private static async Task<MemoryStream> CopyNonSeekableContainerAsync(
+    private static async Task<FileStream> CopyNonSeekableContainerAsync(
         Stream source,
         long maxContainerBytes,
         CancellationToken cancellationToken)
     {
-        var initialCapacity = (int)Math.Min(maxContainerBytes, 64 * 1024L);
-        var output = new MemoryStream(initialCapacity);
+        cancellationToken.ThrowIfCancellationRequested();
+        var path = Path.Combine(Path.GetTempPath(), $"dogad-input-{Guid.NewGuid():N}.tmp");
+        var fileOptions = new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.ReadWrite,
+            Share = FileShare.None,
+            Options = FileOptions.Asynchronous | FileOptions.DeleteOnClose,
+            BufferSize = 64 * 1024
+        };
+        if (!OperatingSystem.IsWindows())
+            fileOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        var output = new FileStream(path, fileOptions);
         var buffer = new byte[64 * 1024];
         long total = 0;
-
         try
         {
             while (true)
             {
-                var read = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-                if (read == 0)
-                {
-                    break;
-                }
-
+                var requested = (int)Math.Min(buffer.Length, maxContainerBytes - total + 1);
+                var read = await source.ReadAsync(buffer.AsMemory(0, requested), cancellationToken).ConfigureAwait(false);
+                if (read == 0) break;
                 total += read;
                 if (total > maxContainerBytes)
-                {
-                    throw new DogadArtifactException(
-                        "dogad.container.too-large",
-                        $"Non-seekable .dogad input exceeded the configured container limit of {maxContainerBytes} bytes.");
-                }
-
+                    throw new DogadArtifactException("dogad.container.too-large", "Non-seekable .dogad input exceeded its byte budget.");
                 await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
             }
-
+            await output.FlushAsync(cancellationToken).ConfigureAwait(false);
             output.Position = 0;
             return output;
         }
         catch
         {
-            output.Dispose();
+            await output.DisposeAsync().ConfigureAwait(false);
             throw;
         }
     }
@@ -353,21 +376,22 @@ public sealed class DogadArtifactSerializer
         }
 
         await using var input = entry.Open();
-        using var output = entry.Length <= int.MaxValue
-            ? new MemoryStream((int)entry.Length)
-            : new MemoryStream();
+        // The ZIP header is untrusted. Do not allocate its declared expanded size up front.
+        using var output = new MemoryStream((int)Math.Min(entry.Length, 64 * 1024));
+        var effectiveLimit = Math.Min(entry.Length, maxBytes);
         var buffer = new byte[64 * 1024];
         long total = 0;
         while (true)
         {
-            var read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            var requested = (int)Math.Min(buffer.Length, effectiveLimit - total + 1);
+            var read = await input.ReadAsync(buffer.AsMemory(0, requested), cancellationToken).ConfigureAwait(false);
             if (read == 0)
             {
                 break;
             }
 
             total += read;
-            if (total > maxBytes)
+            if (total > effectiveLimit)
             {
                 throw new DogadArtifactException(
                     "dogad.container.entry-too-large",
@@ -440,7 +464,8 @@ public sealed class DogadArtifactSerializer
 
     private static void ValidateWriteOptions(DogadWriteOptions options)
     {
-        if (options.MaxSnapshotBytes < 1)
+        if (options.MaxSnapshotBytes < 1 || options.MaxSnapshotBytes > int.MaxValue ||
+            options.MaxManifestBytes < 1 || options.MaxContainerBytes < 1 || options.MaxContainerBytes >= uint.MaxValue)
         {
             throw new ArgumentOutOfRangeException(nameof(options), ".dogad write payload limit must be positive.");
         }
@@ -449,8 +474,9 @@ public sealed class DogadArtifactSerializer
     private static void ValidateReadOptions(DogadReadOptions options)
     {
         if (options.MaxManifestBytes < 1 ||
-            options.MaxSnapshotBytes < 1 ||
-            options.MaxContainerBytes < 1 ||
+            options.MaxSnapshotBytes < 1 || options.MaxSnapshotBytes > int.MaxValue ||
+            options.MaxContainerBytes < 1 || options.MaxContainerBytes >= uint.MaxValue ||
+            options.MaxCentralDirectoryBytes < 1 ||
             options.MaxEntryCount < 2 ||
             options.MaxEntryNameChars < 1)
         {
@@ -470,7 +496,7 @@ public sealed class DogadArtifactSerializer
             MaxDepth = 128,
             RespectNullableAnnotations = true
         };
-        options.Converters.Add(new JsonStringEnumConverter());
+        options.Converters.Add(new JsonStringEnumConverter(allowIntegerValues: false));
         return options;
     }
 }
