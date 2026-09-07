@@ -128,14 +128,7 @@ public static class SnapshotCanonicalizer
                 .ToArray(),
             Aces = content.Aces
                 .OrderBy(item => item.TargetObjectId.Value)
-                .ThenBy(item => item.TrusteeSid, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(item => item.TrusteeSid, StringComparer.Ordinal)
-                .ThenBy(item => item.AccessType)
-                .ThenBy(item => item.AccessMask)
-                .ThenBy(item => item.AceFlags)
-                .ThenBy(item => item.ObjectType)
-                .ThenBy(item => item.InheritedObjectType)
-                .ThenBy(item => item.IsInherited)
+                .ThenBy(item => item.AceIndex)
                 .ToArray()
         };
 
