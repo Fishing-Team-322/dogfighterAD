@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DogfighterAD.Domain\DogfighterAD.Domain.csproj" />
+    <ProjectReference Include="..\..\src\DogfighterAD.Application\DogfighterAD.Application.csproj" />
+    <ProjectReference Include="..\..\src\DogfighterAD.Collectors.ActiveDirectory\DogfighterAD.Collectors.ActiveDirectory.csproj" />
+    <ProjectReference Include="..\..\src\DogfighterAD.Serialization\DogfighterAD.Serialization.csproj" />
+    <ProjectReference Include="..\..\src\DogfighterAD.Cli\DogfighterAD.Cli.csproj" />
+    <ProjectReference Include="..\..\src\DogfighterAD.SysvolWorker\DogfighterAD.SysvolWorker.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <Target Name="CopySysvolWorker" AfterTargets="Build">
+    <ItemGroup>
+      <SysvolWorkerFiles Include="$(MSBuildThisFileDirectory)..\..\src\DogfighterAD.SysvolWorker\bin\$(Configuration)\net10.0\DogfighterAD.SysvolWorker*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(SysvolWorkerFiles)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

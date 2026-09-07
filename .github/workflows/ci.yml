@@ -1,0 +1,84 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+      - foundation/snapshot-core
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  TESTINGPLATFORM_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj
+
+      - name: Build
+        run: dotnet build tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj --configuration Release --no-restore
+
+      - name: Unit tests
+        run: dotnet run --project tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj --configuration Release --no-build
+
+      - name: Self-contained Windows publish smoke
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:RUNNER_TEMP 'dogfighter-win-x64'
+          dotnet publish src/DogfighterAD.Cli/DogfighterAD.Cli.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --output $publishDir
+
+          $required = @(
+            'dogfighter.exe',
+            'DogfighterAD.SysvolWorker.exe',
+            'DogfighterAD.SysvolWorker.dll',
+            'DogfighterAD.SysvolWorker.runtimeconfig.json'
+          )
+          foreach ($name in $required) {
+            $path = Join-Path $publishDir $name
+            if (-not (Test-Path $path -PathType Leaf)) {
+              throw "Published deployment is missing $name"
+            }
+          }
+
+          $runtimeConfig = Get-Content `
+            (Join-Path $publishDir 'DogfighterAD.SysvolWorker.runtimeconfig.json') `
+            -Raw | ConvertFrom-Json
+          if (-not $runtimeConfig.runtimeOptions.includedFrameworks) {
+            throw 'SYSVOL worker publish is not self-contained.'
+          }
+
+          $emptyInput = Join-Path $env:RUNNER_TEMP 'empty-stdin.txt'
+          [System.IO.File]::WriteAllBytes($emptyInput, [byte[]]::new(0))
+          $worker = Start-Process `
+            -FilePath (Join-Path $publishDir 'DogfighterAD.SysvolWorker.exe') `
+            -RedirectStandardInput $emptyInput `
+            -NoNewWindow `
+            -Wait `
+            -PassThru
+          if ($worker.ExitCode -ne 0) {
+            throw "SYSVOL worker exited with code $($worker.ExitCode)."
+          }

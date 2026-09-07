@@ -1,0 +1,261 @@
+{
+  "validation_scope": "Static and packaging checks only; not C# compilation, type checking, xUnit execution or AD/SMB integration testing.",
+  "input_archive": {
+    "name": "dogfighterAD-foundation-snapshot-core.zip",
+    "sha256": "7e9eb4b1df05b34bd5f6c49a6f05647057ae3ab2999fed367a791652a5d70cfe",
+    "upstream_commit_from_zip_comment": "d1f303d57e9376f85c648f95c6ac701472859c84"
+  },
+  "dotnet_executable_found": null,
+  "build_and_tests": {
+    "status": "not_run",
+    "reason": "The .NET SDK is absent. SDK download attempts did not succeed.",
+    "attempt_log": "validation/build-attempt.txt"
+  },
+  "whitespace_check": {
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "bash_syntax_check": {
+    "command": [
+      "bash",
+      "-n",
+      "scripts/verify.sh"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "changed_csharp_lexical_delimiter_checks": [
+    {
+      "file": "src/DogfighterAD.Application/Collection/CollectionExecutor.cs",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "file": "src/DogfighterAD.Cli/CliApplication.cs",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "file": "src/DogfighterAD.Cli/CliOptions.cs",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "file": "src/DogfighterAD.Cli/ScanWorkflow.cs",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "file": "src/DogfighterAD.Collectors.ActiveDirectory/Collectors/GpoSysvolCollector.cs",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "file": "src/DogfighterAD.Collectors.ActiveDirectory/Collectors/GroupMemberRangeReader.cs",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "file": "src/DogfighterAD.Collectors.ActiveDirectory/Ldap/SystemLdapClient.cs",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "file": "src/DogfighterAD.Collectors.ActiveDirectory/Sysvol/SysvolPolicyParsers.cs",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "file": "src/DogfighterAD.Domain/Snapshots/SnapshotInvariantValidator.cs",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "file": "src/DogfighterAD.Serialization/BudgetWriteStream.cs",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "file": "src/DogfighterAD.Serialization/CanonicalComparisonStream.cs",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "file": "src/DogfighterAD.Serialization/DogadArtifactSerializer.cs",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "file": "src/DogfighterAD.Serialization/DogadFormat.cs",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "file": "src/DogfighterAD.Serialization/ZipContainerPreflight.cs",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "file": "tests/DogfighterAD.Core.Tests/ReviewFollowupRegressionTests.cs",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "file": "tests/DogfighterAD.Core.Tests/Serialization/DogadArtifactSerializerTests.cs",
+      "passed": true,
+      "errors": []
+    }
+  ],
+  "project_xml_and_references": [
+    {
+      "file": "Directory.Build.props",
+      "parsed": true,
+      "references": []
+    },
+    {
+      "file": "src/DogfighterAD.Application/DogfighterAD.Application.csproj",
+      "parsed": true,
+      "references": [
+        {
+          "include": "..\\DogfighterAD.Domain\\DogfighterAD.Domain.csproj",
+          "exists": true
+        }
+      ]
+    },
+    {
+      "file": "src/DogfighterAD.Cli/DogfighterAD.Cli.csproj",
+      "parsed": true,
+      "references": [
+        {
+          "include": "..\\DogfighterAD.Domain\\DogfighterAD.Domain.csproj",
+          "exists": true
+        },
+        {
+          "include": "..\\DogfighterAD.Application\\DogfighterAD.Application.csproj",
+          "exists": true
+        },
+        {
+          "include": "..\\DogfighterAD.Collectors.ActiveDirectory\\DogfighterAD.Collectors.ActiveDirectory.csproj",
+          "exists": true
+        },
+        {
+          "include": "..\\DogfighterAD.Serialization\\DogfighterAD.Serialization.csproj",
+          "exists": true
+        },
+        {
+          "include": "..\\DogfighterAD.SysvolWorker\\DogfighterAD.SysvolWorker.csproj",
+          "exists": true
+        }
+      ]
+    },
+    {
+      "file": "src/DogfighterAD.Collectors.ActiveDirectory/DogfighterAD.Collectors.ActiveDirectory.csproj",
+      "parsed": true,
+      "references": [
+        {
+          "include": "..\\DogfighterAD.Application\\DogfighterAD.Application.csproj",
+          "exists": true
+        },
+        {
+          "include": "..\\DogfighterAD.Domain\\DogfighterAD.Domain.csproj",
+          "exists": true
+        }
+      ]
+    },
+    {
+      "file": "src/DogfighterAD.Domain/DogfighterAD.Domain.csproj",
+      "parsed": true,
+      "references": []
+    },
+    {
+      "file": "src/DogfighterAD.Serialization/DogfighterAD.Serialization.csproj",
+      "parsed": true,
+      "references": [
+        {
+          "include": "..\\DogfighterAD.Domain\\DogfighterAD.Domain.csproj",
+          "exists": true
+        }
+      ]
+    },
+    {
+      "file": "src/DogfighterAD.SysvolWorker/DogfighterAD.SysvolWorker.csproj",
+      "parsed": true,
+      "references": [
+        {
+          "include": "..\\DogfighterAD.Collectors.ActiveDirectory\\DogfighterAD.Collectors.ActiveDirectory.csproj",
+          "exists": true
+        }
+      ]
+    },
+    {
+      "file": "tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj",
+      "parsed": true,
+      "references": [
+        {
+          "include": "..\\..\\src\\DogfighterAD.Domain\\DogfighterAD.Domain.csproj",
+          "exists": true
+        },
+        {
+          "include": "..\\..\\src\\DogfighterAD.Application\\DogfighterAD.Application.csproj",
+          "exists": true
+        },
+        {
+          "include": "..\\..\\src\\DogfighterAD.Collectors.ActiveDirectory\\DogfighterAD.Collectors.ActiveDirectory.csproj",
+          "exists": true
+        },
+        {
+          "include": "..\\..\\src\\DogfighterAD.Serialization\\DogfighterAD.Serialization.csproj",
+          "exists": true
+        },
+        {
+          "include": "..\\..\\src\\DogfighterAD.Cli\\DogfighterAD.Cli.csproj",
+          "exists": true
+        },
+        {
+          "include": "..\\..\\src\\DogfighterAD.SysvolWorker\\DogfighterAD.SysvolWorker.csproj",
+          "exists": true
+        }
+      ]
+    }
+  ],
+  "added_test_inventory": {
+    "file": "tests/DogfighterAD.Core.Tests/ReviewFollowupRegressionTests.cs",
+    "fact_methods": 13,
+    "theory_methods": 5,
+    "total_methods": 18,
+    "inline_data_rows": 19,
+    "total_scenarios": 32,
+    "execution_status": "not_run"
+  },
+  "changed_paths": [
+    "PATCH_NOTES_RU.md",
+    "README.md",
+    "scripts/verify.ps1",
+    "scripts/verify.sh",
+    "src/DogfighterAD.Application/Collection/CollectionExecutor.cs",
+    "src/DogfighterAD.Cli/CliApplication.cs",
+    "src/DogfighterAD.Cli/CliOptions.cs",
+    "src/DogfighterAD.Cli/DogfighterAD.Cli.csproj",
+    "src/DogfighterAD.Cli/ScanWorkflow.cs",
+    "src/DogfighterAD.Collectors.ActiveDirectory/Collectors/GpoSysvolCollector.cs",
+    "src/DogfighterAD.Collectors.ActiveDirectory/Collectors/GroupMemberRangeReader.cs",
+    "src/DogfighterAD.Collectors.ActiveDirectory/Ldap/SystemLdapClient.cs",
+    "src/DogfighterAD.Collectors.ActiveDirectory/Sysvol/SysvolPolicyParsers.cs",
+    "src/DogfighterAD.Domain/Snapshots/SnapshotInvariantValidator.cs",
+    "src/DogfighterAD.Serialization/BudgetWriteStream.cs",
+    "src/DogfighterAD.Serialization/CanonicalComparisonStream.cs",
+    "src/DogfighterAD.Serialization/DogadArtifactSerializer.cs",
+    "src/DogfighterAD.Serialization/DogadFormat.cs",
+    "src/DogfighterAD.Serialization/ZipContainerPreflight.cs",
+    "tests/DogfighterAD.Core.Tests/ReviewFollowupRegressionTests.cs",
+    "tests/DogfighterAD.Core.Tests/Serialization/DogadArtifactSerializerTests.cs",
+    "validation/build-attempt.txt"
+  ]
+}

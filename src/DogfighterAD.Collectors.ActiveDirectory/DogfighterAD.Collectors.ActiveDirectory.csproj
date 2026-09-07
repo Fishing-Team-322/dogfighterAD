@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\DogfighterAD.Application\DogfighterAD.Application.csproj" />
+    <ProjectReference Include="..\DogfighterAD.Domain\DogfighterAD.Domain.csproj" />
+    <PackageReference Include="System.DirectoryServices.Protocols" Version="10.0.11" />
+  </ItemGroup>
+</Project>
