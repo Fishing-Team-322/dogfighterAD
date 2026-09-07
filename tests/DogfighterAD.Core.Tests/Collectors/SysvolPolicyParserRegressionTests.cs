@@ -68,7 +68,7 @@ public sealed class SysvolPolicyParserRegressionTests
             "GPT.INI");
 
         Assert.True(parsed.Success, parsed.Error);
-        var version = Assert.Single(parsed.Settings.Where(setting => setting.Key == "Version"));
+        var version = Assert.Single(parsed.Settings, setting => setting.Key == "Version");
         Assert.Equal(FactDisposition.Stored, version.Disposition);
         Assert.Equal("65537", version.Value);
 
@@ -91,12 +91,13 @@ public sealed class SysvolPolicyParserRegressionTests
             "Machine\\Microsoft\\Windows NT\\SecEdit\\GptTmpl.inf");
 
         Assert.True(parsed.Success, parsed.Error);
-        var minimum = Assert.Single(parsed.Settings.Where(setting =>
-            setting.Key == "MinimumPasswordLength"));
+        var minimum = Assert.Single(
+            parsed.Settings,
+            setting => setting.Key == "MinimumPasswordLength");
         Assert.Equal(FactDisposition.Stored, minimum.Disposition);
         Assert.Equal("14", minimum.Value);
 
-        var apiKey = Assert.Single(parsed.Settings.Where(setting => setting.Key == "ApiKey"));
+        var apiKey = Assert.Single(parsed.Settings, setting => setting.Key == "ApiKey");
         Assert.NotEqual(FactDisposition.Stored, apiKey.Disposition);
         Assert.Null(apiKey.Value);
     }
