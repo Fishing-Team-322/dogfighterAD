@@ -1,5 +1,6 @@
 using System.Globalization;
 using DogfighterAD.Application.Analysis;
+using DogfighterAD.Application.Analysis.Rules;
 using DogfighterAD.Domain.Analysis;
 using DogfighterAD.Domain.Snapshots;
 
@@ -8,36 +9,46 @@ namespace DogfighterAD.Core.Tests.Analysis;
 public sealed class AdcsLowPrivilegeIndexTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 8, 10, 30, 0, TimeSpan.Zero);
+    private static readonly AdObjectId TemplateId = new(Guid.Parse("66666666-6666-6666-6666-666666666666"));
     private const string DomainSid = "S-1-5-21-100-200-300";
     private const string EnrollGroupSid = DomainSid + "-2100";
+    private const string EnrollRightGuid = "0e10c968-78fb-11d2-90d4-00c04f79dc55";
 
     [Fact]
-    public void NestedCustomGroup_WithEnabledNonPrivilegedUser_IsProvenLowPrivilege()
+    public void NestedCustomGroup_WithEnabledNonPrivilegedUser_ProducesBroadEnrollmentCandidate()
     {
-        var snapshot = CreateSnapshot(privilegedUser: false);
-        var index = new AdcsLowPrivilegeIndex(
-            snapshot,
-            new ObservationIndex(snapshot),
-            TestContext.Current.CancellationToken);
+        var evaluation = Evaluate(CreateSnapshot(privilegedUser: false));
 
-        Assert.True(index.ScopeComplete);
-        Assert.True(index.TryProveLowPrivilegeTrustee(EnrollGroupSid, out var evidence));
-        Assert.Contains(evidence, item => item.Path == "group.member");
-        Assert.Contains(evidence, item => item.Path == "user.userAccountControl");
+        Assert.Equal(RuleOutcome.Potential, evaluation.Outcome);
+        Assert.Contains(evaluation.Evidence, item => item.Path == "group.member");
+        Assert.Contains(evaluation.Evidence, item => item.Path == "user.userAccountControl");
     }
 
     [Fact]
-    public void NestedCustomGroup_WithProvenPrivilegedUser_IsNotProvenLowPrivilege()
+    public void NestedCustomGroup_WithProvenPrivilegedUser_IsNotClassifiedLowPrivilege()
     {
-        var snapshot = CreateSnapshot(privilegedUser: true);
-        var index = new AdcsLowPrivilegeIndex(
-            snapshot,
-            new ObservationIndex(snapshot),
-            TestContext.Current.CancellationToken);
+        var evaluation = Evaluate(CreateSnapshot(privilegedUser: true));
 
-        Assert.True(index.ScopeComplete);
-        Assert.False(index.TryProveLowPrivilegeTrustee(EnrollGroupSid, out var evidence));
-        Assert.Empty(evidence);
+        Assert.Equal(RuleOutcome.NotDetected, evaluation.Outcome);
+    }
+
+    private static RuleEvaluation Evaluate(AdSnapshot snapshot)
+    {
+        var engine = new RuleEngine(
+            CertificateServicesRulePack.Create(),
+            "test.adcs-membership",
+            CertificateServicesRulePack.Version);
+        var report = engine.Analyze(
+            snapshot,
+            new RuleEngineOptions
+            {
+                RuleIds = new HashSet<string>(StringComparer.Ordinal)
+                {
+                    "ADCS.TEMPLATE.BROAD_ENROLLMENT"
+                }
+            },
+            TestContext.Current.CancellationToken);
+        return Assert.Single(report.Evaluations);
     }
 
     private static AdSnapshot CreateSnapshot(bool privilegedUser)
@@ -79,6 +90,13 @@ public sealed class AdcsLowPrivilegeIndexTests
             Name = "Domain Admins",
             Sid = DomainSid + "-512"
         };
+        var template = new CertificateTemplate
+        {
+            Id = TemplateId,
+            DistinguishedName = "CN=NestedEnrollment,CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration,DC=review,DC=invalid",
+            Name = "NestedEnrollment",
+            CommonName = "NestedEnrollment"
+        };
 
         var groups = privilegedUser
             ? new[] { domainUsers, enrollGroup, domainAdmins }
@@ -90,6 +108,33 @@ public sealed class AdcsLowPrivilegeIndexTests
         };
         if (privilegedUser)
             memberships.Add(new AdGroupMembership(domainAdmins.Id, user.Id, MembershipSource.Explicit));
+
+        var services = new CertificateServicesSnapshot
+        {
+            Templates = [template],
+            SecurityDescriptors =
+            [
+                new AdSecurityDescriptor
+                {
+                    TargetObjectId = template.Id,
+                    DaclState = AdDaclState.Present
+                }
+            ],
+            Aces =
+            [
+                new AdAce
+                {
+                    TargetObjectId = template.Id,
+                    AceIndex = 0,
+                    TrusteeSid = EnrollGroupSid,
+                    AccessType = AdAccessControlType.Allow,
+                    AccessMask = 0x00000100,
+                    AceFlags = 0,
+                    ObjectType = Guid.Parse(EnrollRightGuid),
+                    IsInherited = false
+                }
+            ]
+        };
 
         var facts = new List<ObservedFact>();
         Add(facts, CollectionCapabilities.DirectoryDomains, Subject(domain), "domain.objectSid", DomainSid, FactValueKind.Sid);
@@ -109,15 +154,21 @@ public sealed class AdcsLowPrivilegeIndexTests
             Add(facts, CollectionCapabilities.DirectoryMemberships, Subject(domainAdmins), "group.member", user.DistinguishedName, FactValueKind.DistinguishedName);
         }
 
-        var content = new SnapshotContent
-        {
-            Domains = [domain],
-            Users = [user],
-            Groups = groups,
-            GroupMemberships = memberships
-        };
+        var templateSubject = $"adcs-template:{template.Id}";
+        Add(facts, CollectionCapabilities.AdcsAcls, templateSubject, "securityDescriptor.daclState", "Present", FactValueKind.Text);
+        Add(facts, CollectionCapabilities.AdcsAcls, templateSubject, "securityDescriptor.parseComplete", "true", FactValueKind.Boolean);
+        AddInteger(facts, CollectionCapabilities.AdcsAcls, templateSubject, "securityDescriptor.aceCount", 1);
+        Add(facts, CollectionCapabilities.AdcsAcls, templateSubject, "securityDescriptor.dacl.ace[0].accessType", "Allow", FactValueKind.Text);
+        AddInteger(facts, CollectionCapabilities.AdcsAcls, templateSubject, "securityDescriptor.dacl.ace[0].aceFlags", 0);
+        AddInteger(facts, CollectionCapabilities.AdcsAcls, templateSubject, "securityDescriptor.dacl.ace[0].accessMask", 0x00000100);
+        Add(facts, CollectionCapabilities.AdcsAcls, templateSubject, "securityDescriptor.dacl.ace[0].trusteeSid", EnrollGroupSid, FactValueKind.Sid);
+        Add(facts, CollectionCapabilities.AdcsAcls, templateSubject, "securityDescriptor.dacl.ace[0].objectTypePresent", "true", FactValueKind.Boolean);
+        Add(facts, CollectionCapabilities.AdcsAcls, templateSubject, "securityDescriptor.dacl.ace[0].objectType", EnrollRightGuid, FactValueKind.Guid);
+
         var capabilities = new[]
         {
+            CollectionCapabilities.AdcsTemplates,
+            CollectionCapabilities.AdcsAcls,
             CollectionCapabilities.DirectoryUsers,
             CollectionCapabilities.DirectoryGroups,
             CollectionCapabilities.DirectoryMemberships,
@@ -132,6 +183,8 @@ public sealed class AdcsLowPrivilegeIndexTests
             CompletedAt = Now,
             ObservedItemCount = capability switch
             {
+                CollectionCapabilities.AdcsTemplates => 1,
+                CollectionCapabilities.AdcsAcls => 1,
                 CollectionCapabilities.DirectoryUsers => 1,
                 CollectionCapabilities.DirectoryGroups => groups.Length,
                 CollectionCapabilities.DirectoryMemberships => memberships.Count,
@@ -160,7 +213,14 @@ public sealed class AdcsLowPrivilegeIndexTests
                 RequestedCapabilities = capabilities,
                 Collectors = [new CollectorIdentity("fixture", "1")]
             },
-            Content = content,
+            Content = new SnapshotContent
+            {
+                Domains = [domain],
+                Users = [user],
+                Groups = groups,
+                GroupMemberships = memberships,
+                CertificateServices = services
+            },
             Coverage = coverage,
             Observations = facts
         };
