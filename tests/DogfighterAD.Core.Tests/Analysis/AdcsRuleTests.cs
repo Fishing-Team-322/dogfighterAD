@@ -43,7 +43,7 @@ public sealed class AdcsRuleTests
         Assert.Equal(RuleOutcome.Potential, evaluation.Outcome);
         Assert.Equal("esc1-candidate", evaluation.CheckKey);
         Assert.Contains("directory evidence proves", evaluation.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("runtime", evaluation.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("registry", evaluation.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -182,12 +182,19 @@ public sealed class AdcsRuleTests
     public void PartialAclCapability_AddsNotVerifiedCoverageEvaluation()
     {
         var snapshot = CreateSnapshot();
+        var coverage = snapshot.Coverage.Select(item =>
+            item.CapabilityId == CollectionCapabilities.AdcsAcls
+                ? item with { Status = CapabilityStatus.Partial }
+                : item).ToArray();
         snapshot = snapshot with
         {
-            Coverage = snapshot.Coverage.Select(item =>
-                item.CapabilityId == CollectionCapabilities.AdcsAcls
-                    ? item with { Status = CapabilityStatus.Partial }
-                    : item).ToArray()
+            Coverage = coverage,
+            Metadata = snapshot.Metadata with
+            {
+                CompletionStatus = SnapshotCompletionStatusCalculator.Calculate(
+                    snapshot.Metadata.RequestedCapabilities,
+                    coverage)
+            }
         };
 
         var report = Run(snapshot, "ADCS.TEMPLATE.BROAD_ENROLLMENT");
