@@ -10,22 +10,118 @@
   <header class="topbar">
     <div>
       <div class="brand">DogfighterAD</div>
-      <div class="subtitle">Offline Active Directory security assessment</div>
+      <div class="subtitle">Local Active Directory security assessment</div>
     </div>
     <div id="hostStatus" class="host-status">Local UI</div>
   </header>
 
   <main class="page">
-    <section class="panel import-panel">
-      <div>
-        <h1>Open a snapshot</h1>
-        <p>Select a local <code>.dogad</code> artifact. Analysis runs locally and does not reconnect to Active Directory.</p>
+    <section class="workflow-grid">
+      <section class="panel workflow-panel">
+        <div class="workflow-heading">
+          <div>
+            <span class="eyebrow">Recommended workflow</span>
+            <h1>New assessment</h1>
+            <p>Collect a verified snapshot, save it locally, then analyze it automatically.</p>
+          </div>
+          <span class="workflow-number">01</span>
+        </div>
+
+        <form id="assessmentForm" class="assessment-form" autocomplete="off">
+          <label class="field field-wide">
+            <span>Target DC / domain</span>
+            <input id="assessmentTarget" type="text" placeholder="dc.mini.lab" required spellcheck="false" autocomplete="off">
+          </label>
+
+          <label class="field">
+            <span>Profile</span>
+            <select id="assessmentProfile">
+              <option value="audit-full" selected>Audit full</option>
+              <option value="minimal">Minimal</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Authentication</span>
+            <select id="authenticationMode">
+              <option value="os-context" selected>Current OS context</option>
+              <option value="explicit">Username + password</option>
+            </select>
+          </label>
+
+          <div id="explicitCredentialFields" class="credential-fields hidden field-wide">
+            <label class="field">
+              <span>Username</span>
+              <input id="assessmentUsername" type="text" placeholder="MINILAB\alice" spellcheck="false" autocomplete="username">
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <input id="assessmentPassword" type="password" autocomplete="current-password">
+            </label>
+          </div>
+
+          <label class="field">
+            <span>LDAP authentication</span>
+            <select id="ldapAuthMode">
+              <option value="negotiate" selected>Negotiate</option>
+              <option value="ntlm">NTLM compatibility</option>
+            </select>
+          </label>
+
+          <label class="field checkbox-field">
+            <input id="useLdaps" type="checkbox">
+            <span>Use LDAPS</span>
+          </label>
+
+          <label class="field">
+            <span>LDAP port <small>optional</small></span>
+            <input id="ldapPort" type="number" min="1" max="65535" placeholder="389 / 636">
+          </label>
+
+          <label class="field field-wide">
+            <span>Additional SYSVOL authorities <small>optional, comma-separated</small></span>
+            <input id="sysvolAuthorities" type="text" placeholder="fileserver.example.test" spellcheck="false" autocomplete="off">
+          </label>
+
+          <div class="form-note field-wide">
+            Passwords are not saved in browser storage, argv, environment variables or reports. The password field is cleared immediately after the scan request starts.
+          </div>
+
+          <div class="form-actions field-wide">
+            <button id="startAssessment" type="submit">Start assessment</button>
+            <button id="cancelAssessment" type="button" class="secondary hidden">Cancel</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel workflow-panel">
+        <div class="workflow-heading">
+          <div>
+            <span class="eyebrow">Offline workflow</span>
+            <h1>Open existing snapshot</h1>
+            <p>Analyze a local <code>.dogad</code> without reconnecting to LDAP or SYSVOL.</p>
+          </div>
+          <span class="workflow-number">02</span>
+        </div>
+        <div class="import-actions stacked-actions">
+          <input id="snapshotFile" type="file" accept=".dogad,application/octet-stream">
+          <button id="analyzeButton" type="button">Analyze snapshot</button>
+        </div>
+        <div id="importMessage" class="message" aria-live="polite"></div>
+      </section>
+    </section>
+
+    <section id="assessmentProgressPanel" class="panel assessment-progress hidden" aria-live="polite">
+      <div class="progress-header">
+        <div>
+          <span class="eyebrow">Assessment progress</span>
+          <h2 id="assessmentState">Starting…</h2>
+          <p id="assessmentMeta" class="muted"></p>
+        </div>
+        <a id="snapshotDownload" class="button-link secondary hidden" href="#">Download .dogad</a>
       </div>
-      <div class="import-actions">
-        <input id="snapshotFile" type="file" accept=".dogad,application/octet-stream">
-        <button id="analyzeButton" type="button">Analyze snapshot</button>
-      </div>
-      <div id="message" class="message" aria-live="polite"></div>
+      <div id="assessmentMessage" class="message"></div>
+      <div id="collectorProgress" class="collector-progress"></div>
     </section>
 
     <section id="workspace" class="workspace hidden">
@@ -98,7 +194,7 @@
       <section id="tab-unknowns" class="tab-page">
         <section class="panel">
           <h2>Not verified checks</h2>
-          <p class="muted">These are checks that could not reach a trustworthy verdict because required evidence was missing or unusable.</p>
+          <p class="muted">These checks could not reach a trustworthy verdict because required evidence was missing or unusable.</p>
           <div id="unknownList" class="unknown-list"></div>
         </section>
       </section>
