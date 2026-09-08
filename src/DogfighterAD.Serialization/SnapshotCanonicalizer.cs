@@ -163,6 +163,15 @@ public static class SnapshotCanonicalizer
                 .OrderBy(item => item.AuthorityId.Value)
                 .ThenBy(item => item.TemplateId.Value)
                 .ToArray(),
+            SecurityDescriptors = services.SecurityDescriptors
+                .OrderBy(item => item.TargetObjectId.Value)
+                .ThenBy(item => item.DaclState)
+                .ThenBy(item => item.ControlFlags)
+                .ToArray(),
+            Aces = services.Aces
+                .OrderBy(item => item.TargetObjectId.Value)
+                .ThenBy(item => item.AceIndex)
+                .ToArray(),
             Trust = services.Trust is null
                 ? null
                 : services.Trust with
