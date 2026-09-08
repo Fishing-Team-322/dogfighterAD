@@ -87,17 +87,25 @@ This document tracks the current repository state after the validated Rule Engin
 - [x] Explicit `NotVerified`/missing-data view.
 - [x] Basic snapshot/report metadata view (snapshot ID, collection completion, rule pack).
 - [x] JSON/HTML export from the same in-memory analysis model.
-- [ ] Package the UI into the normal distributable workflow after the first functional host is live-validated.
+- [ ] Package the UI into the normal distributable workflow after the first end-to-end live UI assessment is validated.
 
 The first UI milestone is intentionally **not graph-dependent**. A graph visualization will only be added after graph projection/path-analysis semantics are implemented and validated. DogfighterAD will not introduce a graph database or graph UI solely to imitate another product.
 
-### 0.3.1 — collection UX
+### 0.3.1 — integrated assessment workflow
 
-- [ ] Scan wizard for target/profile/authentication selection.
-- [ ] Hidden interactive credential entry; no password argv/environment/browser-storage persistence.
-- [ ] Collector progress and cancellation.
-- [ ] Live coverage/issues display.
-- [ ] Save `.dogad` then analyze through the same core services.
+- [x] `New assessment` workflow for target/profile/authentication selection.
+- [x] Current-OS-context and explicit username/password collection paths.
+- [x] Password input is not persisted in browser storage/argv/environment/report state and is cleared after request construction.
+- [x] LDAP Negotiate/NTLM compatibility selection, optional LDAPS/port and approved SYSVOL authorities.
+- [x] Live collector progress with state/elapsed/issue display.
+- [x] Cancellation while collection or analysis is active.
+- [x] Save a verified `.dogad` into the current user's local assessment-data directory.
+- [x] Download the generated `.dogad` from the loopback UI.
+- [x] Automatically analyze the completed snapshot and open the existing findings/coverage/NotVerified workspace.
+- [x] Keep `Open existing snapshot` as a separate offline-only workflow.
+- [ ] Persist assessment metadata/report history across UI process restarts.
+
+The integrated workflow preserves the snapshot boundary: `UI -> collectors -> verified .dogad -> offline Rule Engine -> findings`. The browser is only a controller/view; LDAP and SYSVOL remain in the local .NET host. Loopback HTTP is not a supported remote deployment mode.
 
 ### 0.3.2 — AD CS directory posture and certificate templates
 
@@ -156,3 +164,4 @@ This milestone follows the first usable UI foundation and is intentionally split
 6. Partial/missing evidence remains visible as `NotVerified`, never a false clean result.
 7. UI uses the same core analysis/collection services as CLI rather than duplicating security logic.
 8. Credentials and sensitive transport material never enter browser storage, argv, logs or persisted UI state.
+9. A UI-created assessment must write and verify its `.dogad` before the snapshot is treated as a saved assessment artifact.
