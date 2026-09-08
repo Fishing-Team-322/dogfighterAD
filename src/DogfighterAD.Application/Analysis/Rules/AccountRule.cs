@@ -20,7 +20,7 @@ public sealed class AccountRule : RuleBase
     private string Prefix => _computer ? "computer" : "user";
 
     public AccountRule(RuleMetadata metadata, bool computer, AccountTest test, string path = "",
-        long mask = 0, bool excludeDc = false, FactValueKind kind = FactValueKind.Text) : base(metadata with { Version = "1.0.1" })
+        long mask = 0, bool excludeDc = false, FactValueKind kind = FactValueKind.Text) : base(metadata with { Version = "1.1.0" })
     { _computer = computer; _test = test; _path = path; _mask = mask; _excludeDc = excludeDc; _kind = kind; }
 
     public override IEnumerable<RuleEvaluation> Evaluate(AdSnapshot snapshot, RuleContext context)
@@ -66,6 +66,11 @@ public sealed class AccountRule : RuleBase
             }
             else if (_test == AccountTest.EncryptionBit)
             {
+                if (check.ConfirmedAbsent(Capability, Prefix + ".supportedEncryptionTypes"))
+                {
+                    yield return check.NotApplicable("The encryption attribute is proven unset. This explicit-mask rule cannot describe environment defaults or negotiated encryption.");
+                    continue;
+                }
                 var value = check.Integer(Capability, Prefix + ".supportedEncryptionTypes");
                 if (!check.Known) { yield return check.Unknown(); continue; }
                 // Explicit zero uses environment-dependent defaults; missing/zero is never converted to RC4 or AES.
@@ -76,6 +81,11 @@ public sealed class AccountRule : RuleBase
             else
             {
                 var field = _test == AccountTest.LogonAge ? "lastLogonTimestamp" : _test == AccountTest.Expired ? "accountExpires" : "pwdLastSet";
+                if (_test == AccountTest.LogonAge && check.ConfirmedAbsent(Capability, Prefix + "." + field))
+                {
+                    yield return check.NotApplicable("The replicated logon timestamp is proven unset; no age can be measured. This does not prove that the account never authenticated.");
+                    continue;
+                }
                 var raw = check.Integer(Capability, Prefix + "." + field);
                 if (!check.Known) { yield return check.Unknown(); continue; }
                 if (_test == AccountTest.Expired && raw is 0 or long.MaxValue)

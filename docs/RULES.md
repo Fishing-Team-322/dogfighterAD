@@ -133,3 +133,12 @@ Required fields below are concise operand descriptions. All relevant observation
 - [Microsoft Windows security baseline settings](https://learn.microsoft.com/en-us/azure/governance/policy/samples/guest-configuration-baseline-windows).
 
 References describe platform semantics. This pack is not certified compliance with every current Microsoft/CIS baseline. Match the policy file and applicability to the actual environment.
+
+## Proof-backed absence, pack 1.1.0
+
+Requested LDAP omissions remain NotVerified unless the new collector persisted a
+validated read-access/absence proof. Confirmed empty SPN, SID history or delegation
+lists yield NotDetected for their presence predicates. Confirmed unset encryption
+configuration yields NotApplicable for explicit-mask rules; no effective cipher is
+inferred. Confirmed absent replicated-logon timestamps yield NotApplicable for age
+measurement, not a never-logged-on assertion. See RULE_ENGINE.md for the exact gates.

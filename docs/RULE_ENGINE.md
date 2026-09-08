@@ -154,3 +154,45 @@ dotnet run --project tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.cspro
 `scripts/verify.sh` / `scripts/verify.ps1` invoke this sequence. CI retains Windows/Linux coverage and adds a real CLI catalog smoke step. New tests under `tests/DogfighterAD.Core.Tests/Analysis` exercise all rule families, field absence/redaction/conflicts, capability boundaries, group cycles, primary groups, default/PSO separation, old optional-field compatibility, deterministic output, safe HTML and CLI round trips. These tests use synthetic data and do not contact a live directory.
 
 **Build and xUnit were not executed in the implementation environment because the .NET SDK is absent.** See [../VALIDATION_RULE_ENGINE.md](../VALIDATION_RULE_ENGINE.md) for the checks that actually ran. Live AD/SMB and empirical memory/performance validation remain deployment acceptance steps.
+
+## Attribute absence proofs (rule pack 1.1.0)
+
+`directory.users` and `directory.computers` v2 and `directory.memberships` v3
+add conservative proofs for requested but omitted LDAP fields. Collectors request
+DACL-only nTSecurityDescriptor together with the attributes and query the schema
+once per participating collector. Their additional facts use the original field
+path plus `.absenceConfirmed`, `.absenceProof`, `.absenceAttribute`,
+`.absenceSearchFlags`, `.absenceDaclSha256`, `.absenceSchemaId`, and
+`.absencePropertySetId`. These are observations with collector, endpoint, DN and
+timestamp provenance; hashes bind diagnostics to the descriptor read but are not
+signatures or offline re-execution of the access check.
+
+The `authenticated-schema-read-v1` method is a sufficient proof, not a full token
+access-check implementation. It requires a successfully authenticated LDAP client,
+an allowlisted attribute with explicit ordinary schema searchFlags and schemaIDGUID,
+and a fully parsed DACL. A read grant must apply to Everyone or Authenticated Users,
+with no ObjectType restriction or one matching the observed attribute/property-set
+GUID. Inherit-only ACEs do not grant access to the current object. Any potentially
+applicable read deny (regardless of trustee or object scope), unsupported ACE,
+missing DACL/schema, or uncertain authentication prevents the proof. A returned
+attribute, including ranged, binary or malformed values, is never relabeled absent.
+A null DACL permits read; an empty/unknown DACL does not. Confidential, RODC-filtered
+and unfamiliar search flags are excluded. The whitelist excludes attributes with
+other special read requirements. Broader allow ACEs for private groups/SELF are
+not resolved; such objects may legitimately retain NotVerified.
+
+Only a complete, coherent proof with the appropriate capability version enables
+an empty-set operand. Missing, old, redacted or contradictory proof remains unknown.
+Positive values and absence evidence together are a conflict. Scalar absence is
+never converted to numeric zero. An explicitly proven unset encryption attribute
+makes explicit-mask rules NotApplicable (not proof of AES/RC4 or KDC defaults).
+A proven absent replicated-logon timestamp makes that age test NotApplicable,
+not proof that the account never logged on. Ordinary missing values stay NotVerified.
+
+`group.memberReadComplete` can now be true for an omitted member attribute only
+when its absence is proved. Invalid absence evidence prevents negative privilege
+proof even if a complete boolean was also persisted. Existing returned-member and
+primary-group requirements remain in force. Original snapshots are never backfilled.
+
+See [MS-ADTS access checks](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/8271b44d-a755-4872-a762-1ac57152099d)
+and [object-specific access](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/3da5080d-de25-4ac8-9f2b-982709253dfb).

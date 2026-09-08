@@ -10,7 +10,7 @@ public sealed record AccountFlagDefinition(string Suffix, string Title, long Mas
 public static class BuiltInRulePack
 {
     public const string Id = "dogfighterad.core";
-    public const string Version = "1.0.1";
+    public const string Version = "1.1.0";
     public static IReadOnlyList<AccountFlagDefinition> AccountFlags { get; } = new AccountFlagDefinition[]
     {
         new("PREAUTH_DISABLED", "Kerberos preauthentication is disabled", 0x400000, FindingSeverity.High),

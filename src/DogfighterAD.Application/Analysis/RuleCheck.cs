@@ -27,6 +27,13 @@ public sealed class RuleCheck
     public IReadOnlyList<string> Values(string capability, string path, FactValueKind kind = FactValueKind.Text, string? subject = null) =>
         Read(_context.Facts.Values(capability, subject ?? _subject.StableId, path, kind), capability, subject, path) ?? [];
 
+    public bool ConfirmedAbsent(string capability, string path)
+    {
+        var absent = _context.Facts.Absence(capability, _subject.StableId, path);
+        if (!absent.Known || !absent.Value) return false;
+        _evidence.AddRange(absent.Evidence);
+        return true;
+    }
     public void Require(bool condition, string capability, string path, string code)
     { if (!condition) _gaps.Add(new(capability, _subject.StableId, path, code)); }
     public void AddEvidence(IEnumerable<Evidence> evidence) => _evidence.AddRange(evidence);

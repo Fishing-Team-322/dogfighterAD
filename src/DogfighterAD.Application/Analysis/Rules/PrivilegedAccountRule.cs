@@ -8,7 +8,7 @@ public enum PrivilegedAccountTest { DelegationNotBlocked, ServicePrincipalName, 
 public sealed class PrivilegedAccountRule : RuleBase
 {
     private readonly PrivilegedAccountTest _test;
-    public PrivilegedAccountRule(RuleMetadata metadata, PrivilegedAccountTest test) : base(metadata with { Version = "1.0.1" }) => _test = test;
+    public PrivilegedAccountRule(RuleMetadata metadata, PrivilegedAccountTest test) : base(metadata with { Version = "1.1.0" }) => _test = test;
     public override IEnumerable<RuleEvaluation> Evaluate(AdSnapshot snapshot, RuleContext context)
     {
         context.MembershipIndex ??= new PrivilegedMembershipIndex(snapshot, context.Facts, context.CancellationToken);

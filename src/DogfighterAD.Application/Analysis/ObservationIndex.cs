@@ -25,6 +25,8 @@ public sealed class ObservationIndex
             .ToDictionary(g => g.Key, g => g.OrderBy(x => x.FactId, StringComparer.Ordinal).ToArray());
     }
 
+    internal bool HasObservation(string capability, string subject, string path) => _facts.ContainsKey((capability, subject, path));
+
     public IReadOnlyList<string> Subjects(string capability, string path) => _facts.Keys
         .Where(k => k.Capability == capability && k.Path == path).Select(k => k.Subject)
         .Distinct(StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal).ToArray();
@@ -42,11 +44,47 @@ public sealed class ObservationIndex
         Scalar(capability, subject, path, FactValueKind.Boolean, value =>
             (bool.TryParse(value, out var parsed), parsed));
 
+    public FactRead<bool> Absence(string capability, string subject, string path)
+    {
+        var expectedAttribute = path.Split('.').Last() switch
+        {
+            "servicePrincipalName" => "servicePrincipalName", "sidHistory" => "sIDHistory",
+            "allowedToDelegateTo" => "msDS-AllowedToDelegateTo", "supportedEncryptionTypes" => "msDS-SupportedEncryptionTypes",
+            "lastLogonTimestamp" => "lastLogonTimestamp", "member" => "member", _ => null
+        };
+        var version = capability == CollectionCapabilities.DirectoryMemberships ? 3 : 2;
+        if (expectedAttribute is null || !_coverage.TryGetValue(capability, out var coverage) || coverage.ContractVersion < version)
+            return FactRead<bool>.Unknown("field.absence-contract-unavailable");
+        if (_facts.ContainsKey((capability, subject, path))) return FactRead<bool>.Unknown("field.conflicting-absence");
+        var marker = Boolean(capability, subject, path + ".absenceConfirmed");
+        var method = Text(capability, subject, path + ".absenceProof");
+        var attribute = Text(capability, subject, path + ".absenceAttribute");
+        var flags = Integer(capability, subject, path + ".absenceSearchFlags");
+        var hash = Text(capability, subject, path + ".absenceDaclSha256");
+        var schemaId = Text(capability, subject, path + ".absenceSchemaId", FactValueKind.Guid);
+        var propertySet = Text(capability, subject, path + ".absencePropertySetId");
+        if (!marker.Known || !marker.Value || !method.Known || method.Value != "authenticated-schema-read-v1" ||
+            !attribute.Known || attribute.Value != expectedAttribute || !flags.Known || flags.Value < 0 || (flags.Value & ~0x17fL) != 0 ||
+            !hash.Known || hash.Value.Length != 64 || !hash.Value.All(Uri.IsHexDigit) ||
+            !schemaId.Known || !Guid.TryParse(schemaId.Value, out var schemaGuid) || schemaGuid == Guid.Empty ||
+            !propertySet.Known || (propertySet.Value.Length > 0 && !Guid.TryParse(propertySet.Value, out _)))
+            return FactRead<bool>.Unknown("field.absence-proof-invalid");
+        var evidence = marker.Evidence.Concat(method.Evidence).Concat(attribute.Evidence).Concat(flags.Evidence).Concat(hash.Evidence).Concat(schemaId.Evidence).Concat(propertySet.Evidence).ToArray();
+        if (evidence.Select(e => (e.Source, e.ObservedAt, e.CollectorId, e.CollectorVersion)).Distinct().Count() != 1)
+            return FactRead<bool>.Unknown("field.absence-proof-conflicting-source");
+        return new(true, true, evidence, null);
+    }
     // Nonempty returned values establish existence, not completeness of an LDAP attribute.
     // An omitted multivalue attribute is Unknown, not an empty set.
     public FactRead<IReadOnlyList<string>> Values(string capability, string subject, string path,
         FactValueKind kind = FactValueKind.Text)
     {
+        if (_facts.ContainsKey((capability, subject, path + ".absenceConfirmed")))
+        {
+            var absent = Absence(capability, subject, path);
+            return absent.Known ? new(true, [], absent.Evidence, null)
+                : FactRead<IReadOnlyList<string>>.Unknown(absent.Code!);
+        }
         var checkedFacts = Checked(capability, subject, path, kind);
         if (checkedFacts.Code is not null)
             return FactRead<IReadOnlyList<string>>.Unknown(checkedFacts.Code);
@@ -58,6 +96,8 @@ public sealed class ObservationIndex
     private FactRead<T> Scalar<T>(string capability, string subject, string path, FactValueKind kind,
         Func<string, (bool Valid, T Value)> parse)
     {
+        if (_facts.ContainsKey((capability, subject, path + ".absenceConfirmed")))
+            return FactRead<T>.Unknown("field.absence-not-scalar");
         var checkedFacts = Checked(capability, subject, path, kind);
         if (checkedFacts.Code is not null) return FactRead<T>.Unknown(checkedFacts.Code);
         var parsed = checkedFacts.Facts.Select(x => parse(x.Value!)).ToArray();

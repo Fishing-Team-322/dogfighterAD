@@ -15,6 +15,16 @@ This document is normative for built-in collectors. It must change together with
 - Increase the contract version when newer analysis needs to distinguish snapshots that guarantee new data from older snapshots that did not collect it.
 - If semantics cannot stay backward-compatible, create a new capability ID.
 
+## Attribute-read proof extension (2026-09-08)
+
+Users/computers v2 and memberships v3 preserve prior positive observations and add
+optional, provenance-backed absence proofs. Complete inventory does not guarantee
+read access to every field. The exact proof gates and seven persisted fields are
+normatively defined in [RULE_ENGINE.md, Attribute absence proofs](RULE_ENGINE.md#attribute-absence-proofs-rule-pack-110).
+Missing proof remains unknown. Membership v3 accepts proven empty groups without
+inventing member edges. No snapshot schema bump is needed: all additions use existing
+ObservedFact records. Historical sections below describe earlier guarantees.
+
 ## Current built-in contracts
 
 ### `directory.core` v1
@@ -29,7 +39,7 @@ Owner: `ad.ldap.domain-metadata`
 
 `Complete` guarantees one normalized domain object for the discovered default naming context with stable `objectGUID`, domain `objectSid`, distinguished name, derived DNS domain name and domain functional level. Name and creation/change timestamps are collected when available. NetBIOS naming is outside v1.
 
-### `directory.users` v1
+### `directory.users` v2
 
 Owner: `ad.ldap.directory-objects`
 
@@ -43,7 +53,7 @@ Owner: `ad.ldap.directory-objects`
 
 `Complete` guarantees successful default-domain group enumeration and stable GUID/DN/SID identity plus parseable `groupType`. `sAMAccountName`, `adminCount`, name and timestamps are retained when present. Membership is a separate capability.
 
-### `directory.computers` v1
+### `directory.computers` v2
 
 Owner: `ad.ldap.directory-objects`
 

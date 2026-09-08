@@ -13,7 +13,7 @@ namespace DogfighterAD.Collectors.ActiveDirectory.Collectors;
 public sealed class GroupMembershipCollector : ICollector
 {
     public const string CollectorId = "ad.ldap.group-memberships";
-    public const string CollectorVersion = "0.2.0";
+    public const string CollectorVersion = "0.3.0";
     private const int DefaultPageSize = 1000;
 
     private static readonly IReadOnlySet<string> ProvidedCapabilities =
@@ -120,12 +120,15 @@ public sealed class GroupMembershipCollector : ICollector
             observations,
             cancellationToken).ConfigureAwait(false);
 
+        var absenceProof = await LdapAttributeAbsenceProof.CreateAsync(client,
+            context.AvailableData.Content.DirectoryEnvironment?.SchemaNamingContext, cancellationToken).ConfigureAwait(false);
         await CollectDirectMembershipDnsAsync(
             client,
             baseDn,
             context.Target,
             index,
             pendingDirectMemberships,
+            absenceProof,
             issues,
             observations,
             cancellationToken).ConfigureAwait(false);
@@ -306,6 +309,7 @@ public sealed class GroupMembershipCollector : ICollector
         string target,
         DirectoryObjectIndex index,
         ICollection<PendingDirectMembership> pending,
+        LdapAttributeAbsenceProof absenceProof,
         ICollection<CollectionIssue> issues,
         ICollection<ObservedFact> observations,
         CancellationToken cancellationToken)
@@ -315,7 +319,8 @@ public sealed class GroupMembershipCollector : ICollector
             BaseDn = baseDn,
             Filter = "(objectCategory=group)",
             Scope = LdapSearchScope.Subtree,
-            Attributes = ["objectGUID", "member"],
+            Attributes = ["objectGUID", "member", "nTSecurityDescriptor"],
+            SecurityDescriptorSections = LdapSecurityDescriptorSections.Dacl,
             PageSize = DefaultPageSize
         };
 
@@ -355,12 +360,15 @@ public sealed class GroupMembershipCollector : ICollector
 
             // Persist the observed enumeration bounds. An omitted member attribute can mean
             // an unreadable field; it is not an explicit empty set for offline negative proofs.
+            var absent = absenceProof.Confirm(entry, "member");
+            if (absent is not null) AbsenceFactWriter.Add(observations, absent, CollectionCapabilities.DirectoryMemberships,
+                $"ad-object:{groupId}", "group.member", CollectorId, CollectorVersion, target, entry.DistinguishedName, _timeProvider.GetUtcNow());
             var memberWasReturned = entry.Attributes.Keys.Any(name =>
                 name.Equals("member", StringComparison.OrdinalIgnoreCase) ||
                 name.StartsWith("member;range=", StringComparison.OrdinalIgnoreCase));
             var observedAt = _timeProvider.GetUtcNow();
             AddFact(observations, groupId, "group.memberReadComplete",
-                (rangeResult.Complete && memberWasReturned).ToString(), FactValueKind.Boolean,
+                (rangeResult.Complete && (memberWasReturned || absent is not null)).ToString(), FactValueKind.Boolean,
                 target, entry.DistinguishedName, observedAt);
             AddFact(observations, groupId, "group.observedMemberCount",
                 rangeResult.Members.Count.ToString(CultureInfo.InvariantCulture), FactValueKind.Integer,

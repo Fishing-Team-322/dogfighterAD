@@ -92,6 +92,8 @@ internal sealed class PrivilegedMembershipIndex
             var count = facts.Integer(CollectionCapabilities.DirectoryMemberships, sub, "group.observedMemberCount");
             var returned = facts.Values(CollectionCapabilities.DirectoryMemberships, sub, "group.member", FactValueKind.DistinguishedName);
             var explicitEdges = explicitCounts.GetValueOrDefault(group.Id);
+            if (facts.HasObservation(CollectionCapabilities.DirectoryMemberships, sub, "group.member.absenceConfirmed") &&
+                !facts.Absence(CollectionCapabilities.DirectoryMemberships, sub, "group.member").Known) ScopeComplete = false;
             if (!complete.Known || !complete.Value || !count.Known || count.Value < 0 || count.Value != explicitEdges ||
                 (count.Value > 0 && (!returned.Known || returned.Value.Count != count.Value)) ||
                 (count.Value == 0 && returned.Known && returned.Value.Count != 0)) ScopeComplete = false;

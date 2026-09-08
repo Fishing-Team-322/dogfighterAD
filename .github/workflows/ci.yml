@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - foundation/snapshot-core
+      - feature/rule-engine
   pull_request:
 
 permissions:
