@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>DogfighterAD</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/certificate-services.css">
 </head>
 <body>
   <header class="topbar">
@@ -148,6 +149,7 @@
 
       <nav class="tabs" aria-label="Analysis sections">
         <button class="tab active" data-tab="findings" type="button">Findings</button>
+        <button class="tab" data-tab="certificate-services" type="button">Certificate Services</button>
         <button class="tab" data-tab="coverage" type="button">Coverage</button>
         <button class="tab" data-tab="unknowns" type="button">Not verified</button>
       </nav>
@@ -176,6 +178,26 @@
         </div>
       </section>
 
+      <section id="tab-certificate-services" class="tab-page">
+        <section class="panel cs-intro">
+          <div>
+            <span class="eyebrow">Directory-derived PKI posture</span>
+            <h2>Certificate Services</h2>
+            <p id="certificateServicesStatus" class="muted">Open this tab after an assessment to load Enterprise CAs, certificate templates and AD CS findings.</p>
+          </div>
+          <section id="certificateServicesSummary" class="summary-grid"></section>
+          <div id="certificateServicesCoverage"></div>
+        </section>
+        <nav id="certificateServicesNav" class="cs-section-nav hidden" aria-label="Certificate Services sections">
+          <button type="button" class="secondary" data-cs-section="authorities">CAs</button>
+          <button type="button" class="secondary active" data-cs-section="templates">Templates</button>
+          <button type="button" class="secondary" data-cs-section="findings">Findings</button>
+        </nav>
+        <section id="certificateAuthorities" class="hidden"></section>
+        <section id="certificateTemplates"></section>
+        <section id="certificateFindings" class="hidden"></section>
+      </section>
+
       <section id="tab-coverage" class="tab-page">
         <section class="panel">
           <h2>Collection coverage</h2>
@@ -202,5 +224,6 @@
   </main>
 
   <script src="/app.js" defer></script>
+  <script src="/certificate-services.js" defer></script>
 </body>
 </html>
