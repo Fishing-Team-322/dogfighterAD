@@ -50,22 +50,31 @@ public sealed record UiCertificateServicesView
         var authorities = services.Authorities
             .OrderBy(item => item.Name ?? item.DistinguishedName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(item => item.Id.Value)
-            .Select(authority => new UiCertificateAuthorityView
+            .Select(authority =>
             {
-                StableId = $"adcs-ca:{authority.Id}",
-                Name = authority.Name,
-                DistinguishedName = authority.DistinguishedName,
-                DnsHostName = authority.DnsHostName,
-                Certificates = authority.Certificates.Select(MapCertificate).ToArray(),
-                PublishedTemplates = publicationsByAuthority.TryGetValue(authority.Id, out var published)
-                    ? published.Select(publication =>
-                    {
-                        templateById.TryGetValue(publication.TemplateId, out var template);
-                        return new UiPublishedObject(
-                            publication.TemplateId.ToString(),
-                            template?.DisplayName ?? template?.CommonName ?? template?.Name ?? publication.TemplateId.ToString());
-                    }).ToArray()
-                    : []
+                descriptorByTarget.TryGetValue(authority.Id, out var descriptor);
+                var grants = acesByTarget.TryGetValue(authority.Id, out var targetAces)
+                    ? targetAces.Select(MapGrant).ToArray()
+                    : [];
+                return new UiCertificateAuthorityView
+                {
+                    StableId = $"adcs-ca:{authority.Id}",
+                    Name = authority.Name,
+                    DistinguishedName = authority.DistinguishedName,
+                    DnsHostName = authority.DnsHostName,
+                    Certificates = authority.Certificates.Select(MapCertificate).ToArray(),
+                    PublishedTemplates = publicationsByAuthority.TryGetValue(authority.Id, out var published)
+                        ? published.Select(publication =>
+                        {
+                            templateById.TryGetValue(publication.TemplateId, out var template);
+                            return new UiPublishedObject(
+                                publication.TemplateId.ToString(),
+                                template?.DisplayName ?? template?.CommonName ?? template?.Name ?? publication.TemplateId.ToString());
+                        }).ToArray()
+                        : [],
+                    DaclState = descriptor?.DaclState.ToString(),
+                    DirectAces = grants
+                };
             })
             .ToArray();
 
@@ -195,6 +204,8 @@ public sealed record UiCertificateAuthorityView
     public string? DnsHostName { get; init; }
     public IReadOnlyList<UiCertificateView> Certificates { get; init; } = [];
     public IReadOnlyList<UiPublishedObject> PublishedTemplates { get; init; } = [];
+    public string? DaclState { get; init; }
+    public IReadOnlyList<UiCertificateAceView> DirectAces { get; init; } = [];
 }
 
 public sealed record UiCertificateTemplateView
