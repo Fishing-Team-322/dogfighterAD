@@ -1,7 +1,7 @@
 const certificateServicesState = {
   analysisId: null,
   view: null,
-  selectedSection: 'templates',
+  selectedSection: 'authorities',
   selectedAuthority: null,
   selectedTemplate: null
 };
@@ -85,7 +85,7 @@ function csEnrollmentPrincipals(template) {
 
 function csNtAuthStatus(authority) {
   const trust = certificateServicesState.view?.ntAuth;
-  if (!trust?.objectPresent) return { label: 'NTAuth object absent / empty posture', tone: 'warn' };
+  if (!trust?.objectPresent) return { label: 'NTAuth object not present in collected directory posture', tone: 'warn' };
   const trustedHashes = new Set((trust.certificates ?? []).map(certificate => String(certificate.sha256).toLowerCase()));
   const matched = (authority.certificates ?? []).some(certificate => trustedHashes.has(String(certificate.sha256).toLowerCase()));
   return matched
@@ -101,6 +101,21 @@ function csCertificateTable(certificates) {
       <td>${escapeHtml(certificate.subject || '—')}<small>issuer: ${escapeHtml(certificate.issuer || '—')}</small></td>
       <td>${escapeHtml(formatDate(certificate.notBefore))}<small>to ${escapeHtml(formatDate(certificate.notAfter))}</small></td>
     </tr>`).join('')}</tbody></table></div>`;
+}
+
+function csRenderNtAuthPosture() {
+  const trust = certificateServicesState.view?.ntAuth;
+  if (!trust) {
+    return '<div class="empty-state compact">NTAuth posture is unavailable in this snapshot.</div>';
+  }
+  const present = trust.objectPresent === true;
+  return `
+    <div class="cs-kv">
+      <span>NTAuthCertificates object</span><strong class="cs-${present ? 'ok' : 'warn'}">${present ? 'Present' : 'Not present'}</strong>
+      <span>Collected certificates</span><strong>${escapeHtml(trust.certificates?.length ?? 0)}</strong>
+    </div>
+    ${present && trust.distinguishedName ? `<code class="cs-block">${escapeHtml(trust.distinguishedName)}</code>` : ''}
+    ${present ? csCertificateTable(trust.certificates ?? []) : '<div class="empty-state compact">The Configuration-NC search completed without an NTAuthCertificates object. This is a directory inventory result, not a live certificate-validation verdict.</div>'}`;
 }
 
 async function loadCertificateServices(force = false) {
@@ -164,11 +179,15 @@ function renderCertificateServices() {
     return;
   }
 
-  certificateServicesEls.status.textContent = 'Directory-derived Certificate Services inventory. Runtime CA registry/RPC/web-enrollment conditions are not inferred here.';
+  const authorityCount = view.authorities?.length ?? 0;
+  certificateServicesEls.status.textContent = authorityCount === 0
+    ? 'Configuration-NC collection completed, but no Enterprise CA Enrollment Services object was found. Directory NTAuth posture remains visible below; no runtime CA conclusion is inferred.'
+    : 'Directory-derived Certificate Services inventory. Runtime CA registry/RPC/web-enrollment conditions are not inferred here.';
   certificateServicesEls.summary.innerHTML = [
-    ['Enterprise CAs', view.authorities?.length ?? 0],
+    ['Enterprise CAs', authorityCount],
     ['Templates', view.templates?.length ?? 0],
     ['Published templates', (view.templates ?? []).filter(template => template.publishedAuthorities?.length).length],
+    ['NTAuth certificates', view.ntAuth?.certificates?.length ?? 0],
     ['AD CS findings', adcsFindings.length]
   ].map(([label, value]) => `<article class="summary-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join('');
   certificateServicesEls.coverage.innerHTML = csCoverageTable(coverage);
@@ -197,7 +216,12 @@ function csActivateSection(section, updateState = true) {
 function csRenderAuthorities() {
   const authorities = certificateServicesState.view?.authorities ?? [];
   if (!authorities.length) {
-    certificateServicesEls.authorities.innerHTML = '<div class="panel empty-state">No Enterprise CA objects were collected.</div>';
+    certificateServicesEls.authorities.innerHTML = `
+      <section class="panel cs-detail">
+        <div class="detail-heading"><div><span class="eyebrow">Enterprise CA inventory</span><h2>No Enterprise CA objects found</h2></div></div>
+        <p>The Configuration-NC search returned no <code>pKIEnrollmentService</code> objects. This is a proven directory inventory result for this assessment, not a claim about CA runtime security.</p>
+        <h3>NTAuth directory posture</h3>${csRenderNtAuthPosture()}
+      </section>`;
     return;
   }
   if (!authorities.some(item => item.stableId === certificateServicesState.selectedAuthority))
@@ -221,6 +245,7 @@ function csRenderAuthorities() {
         <h3>CA certificate metadata</h3>${csCertificateTable(selected.certificates)}
         <h3>Published templates</h3>${(selected.publishedTemplates ?? []).length ? `<ul class="object-list">${selected.publishedTemplates.map(template => `<li><strong>${escapeHtml(template.name)}</strong><small>${escapeHtml(template.id)}</small></li>`).join('')}</ul>` : '<div class="empty-state compact">No published templates in the collected publication inventory.</div>'}
         <h3>Directory ACL</h3>${csRenderAces(selected.directAces)}
+        <h3>NTAuth directory posture</h3>${csRenderNtAuthPosture()}
         <h3>Risk findings</h3>${findings.length ? `<ul class="object-list">${findings.map(finding => `<li><strong>${escapeHtml(finding.title)}</strong><small>${escapeHtml(finding.ruleId)} · ${escapeHtml(finding.status)} · ${escapeHtml(finding.confidence)}</small><p>${escapeHtml(finding.description)}</p></li>`).join('')}</ul>` : '<div class="empty-state compact">No AD CS CA finding for this object.</div>'}
         <h3>Evidence</h3>${csRenderEvidence(findings)}
       </section>
@@ -233,7 +258,7 @@ function csRenderAuthorities() {
 function csRenderTemplates() {
   const templates = certificateServicesState.view?.templates ?? [];
   if (!templates.length) {
-    certificateServicesEls.templates.innerHTML = '<div class="panel empty-state">No certificate templates were collected.</div>';
+    certificateServicesEls.templates.innerHTML = '<div class="panel empty-state">No certificate template objects were collected from the Configuration NC.</div>';
     return;
   }
   if (!templates.some(item => item.stableId === certificateServicesState.selectedTemplate))
