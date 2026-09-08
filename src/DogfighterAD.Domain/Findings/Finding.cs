@@ -21,6 +21,8 @@ public sealed record Finding
 public sealed record Evidence
 {
     public required string Kind { get; init; }
+    public string? SubjectId { get; init; }
+    public string? CapabilityId { get; init; }
     public string? FactId { get; init; }
     public required string Source { get; init; }
     public required string Path { get; init; }

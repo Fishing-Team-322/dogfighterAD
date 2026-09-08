@@ -19,18 +19,19 @@ public static class CapabilityContractCatalog
     private static readonly IReadOnlyDictionary<string, int> CurrentVersions =
         new Dictionary<string, int>(StringComparer.Ordinal)
         {
+            [CollectionCapabilities.DirectorySecurityPolicy] = 1,
             [CollectionCapabilities.DirectoryCore] = 1,
             [CollectionCapabilities.DirectoryDomains] = 1,
-            [CollectionCapabilities.DirectoryUsers] = 1,
+            [CollectionCapabilities.DirectoryUsers] = 2,
             [CollectionCapabilities.DirectoryGroups] = 1,
-            [CollectionCapabilities.DirectoryComputers] = 1,
+            [CollectionCapabilities.DirectoryComputers] = 2,
             [CollectionCapabilities.DirectoryOrganizationalUnits] = 1,
-            [CollectionCapabilities.DirectoryMemberships] = 1,
-            [CollectionCapabilities.DirectoryAcls] = 2,
+            [CollectionCapabilities.DirectoryMemberships] = 3,
+            [CollectionCapabilities.DirectoryAcls] = 3,
             [CollectionCapabilities.DirectoryTrusts] = 1,
             [CollectionCapabilities.GroupPolicyMetadata] = 1,
             [CollectionCapabilities.GroupPolicyLinks] = 1,
-            [CollectionCapabilities.GroupPolicySysvol] = 1,
+            [CollectionCapabilities.GroupPolicySysvol] = 3,
             [CollectionCapabilities.AdcsDirectory] = 1
         };
 

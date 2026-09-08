@@ -68,7 +68,7 @@ public sealed class GroupMembershipCollectorTests
         var coverage = Assert.Single(result.Fragment.Coverage);
         Assert.Equal(CollectionCapabilities.DirectoryMemberships, coverage.CapabilityId);
         Assert.Equal(CapabilityStatus.Complete, coverage.Status);
-        Assert.Equal(1, coverage.ContractVersion);
+        Assert.Equal(CapabilityContractCatalog.GetCurrentVersion(CollectionCapabilities.DirectoryMemberships), coverage.ContractVersion);
         Assert.Empty(coverage.Issues);
 
         var memberships = result.Fragment.Content.GroupMemberships;

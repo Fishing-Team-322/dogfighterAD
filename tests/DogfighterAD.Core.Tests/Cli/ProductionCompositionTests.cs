@@ -8,8 +8,8 @@ namespace DogfighterAD.Core.Tests.Cli;
 public sealed class ProductionCompositionTests
 {
     [Theory]
-    [InlineData("minimal", 5, 8)]
-    [InlineData("audit-full", 9, 12)]
+    [InlineData("minimal", 6, 9)]
+    [InlineData("audit-full", 10, 13)]
     public void BuiltInProfile_SchedulesEachProductionCollectorOnce(string name, int collectorCount, int capabilityCount)
     {
         Assert.True(BuiltInCollectionProfiles.TryGet(name, out var profile));

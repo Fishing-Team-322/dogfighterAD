@@ -128,7 +128,8 @@ internal static class SysvolPolicyParsers
                     Value = normalized.Value,
                     ValueKind = normalized.ValueKind,
                     Disposition = normalized.Disposition,
-                    DataLength = data.Length
+                    DataLength = data.Length,
+                    RegistryValueType = type
                 });
             }
         }
@@ -159,12 +160,7 @@ internal static class SysvolPolicyParsers
                 .Count(attribute => string.Equals(
                     attribute.Name.LocalName,
                     "cpassword",
-                    StringComparison.OrdinalIgnoreCase));
-
-            if (cpasswordCount == 0)
-            {
-                return ParsedSettingsResult.Succeeded([]);
-            }
+                    StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(attribute.Value));
 
             return ParsedSettingsResult.Succeeded(
             [
@@ -176,7 +172,7 @@ internal static class SysvolPolicyParsers
                     Kind = GpoSettingKind.PreferenceSignal,
                     Section = "PreferencesXml",
                     Key = "cpassword-present",
-                    Value = "true",
+                    Value = cpasswordCount > 0 ? "true" : "false",
                     ValueKind = FactValueKind.Boolean,
                     Disposition = FactDisposition.Stored,
                     DataLength = cpasswordCount
@@ -240,6 +236,19 @@ internal static class SysvolPolicyParsers
 
             var key = line[..separator].Trim();
             var value = line[(separator + 1)..].Trim();
+            if (kind == GpoSettingKind.SecurityTemplate &&
+                SecurityRegistryCatalog.TryParseTemplateDword(section, key, value, out var registryPath, out var valueName, out var dword))
+            {
+                settings.Add(new ParsedSetting
+                {
+                    Scope = GpoPolicyScope.Machine, SourceRelativePath = relativePath,
+                    Sequence = ++sequence, Kind = GpoSettingKind.RegistryPolicy,
+                    Section = registryPath, Key = valueName,
+                    Value = dword.ToString(CultureInfo.InvariantCulture), ValueKind = FactValueKind.Integer,
+                    Disposition = FactDisposition.Stored, DataLength = 4, RegistryValueType = 4
+                });
+                continue;
+            }
             var disposition = DetermineIniDisposition(kind, section, key, value);
 
             settings.Add(new ParsedSetting
@@ -516,6 +525,7 @@ internal sealed record ParsedSetting
     public required FactValueKind ValueKind { get; init; }
     public required FactDisposition Disposition { get; init; }
     public int DataLength { get; init; }
+    public uint? RegistryValueType { get; init; }
 }
 
 internal sealed record ParsedSettingsResult(

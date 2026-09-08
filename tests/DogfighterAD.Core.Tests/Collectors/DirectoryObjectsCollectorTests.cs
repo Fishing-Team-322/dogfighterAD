@@ -57,7 +57,7 @@ public sealed class DirectoryObjectsCollectorTests
         Assert.All(result.Fragment.Coverage, coverage =>
         {
             Assert.Equal(CapabilityStatus.Complete, coverage.Status);
-            Assert.Equal(1, coverage.ContractVersion);
+            Assert.Equal(CapabilityContractCatalog.GetCurrentVersion(coverage.CapabilityId), coverage.ContractVersion);
             Assert.Equal(1, coverage.ObservedItemCount);
             Assert.Empty(coverage.Issues);
         });

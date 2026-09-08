@@ -74,7 +74,7 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
             var client = new SystemLdapClient(
                 setup.Connection,
                 _options.RequestTimeout,
-                setup.CredentialLease);
+                setup.CredentialLease, authenticated: true);
             NativeSetupSlots.Release();
             return client;
         }
@@ -314,6 +314,7 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
 
 internal sealed class SystemLdapClient : IReadOnlyLdapClient
 {
+    public bool IsAuthenticated { get; }
     private const LdapSecurityDescriptorSections AllSecurityDescriptorSections =
         LdapSecurityDescriptorSections.Owner |
         LdapSecurityDescriptorSections.Group |
@@ -324,6 +325,8 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "objectGUID",
+            "schemaIDGUID",
+            "attributeSecurityGUID",
             "objectSid",
             "sIDHistory",
             "securityIdentifier",
@@ -338,11 +341,12 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
     public SystemLdapClient(
         LdapConnection connection,
         TimeSpan requestTimeout,
-        IDisposable? credentialLease = null)
+        IDisposable? credentialLease = null, bool authenticated = false)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
         _requestTimeout = requestTimeout;
         _credentialLease = credentialLease;
+        IsAuthenticated = authenticated;
     }
 
     public async Task<LdapSearchResult> SearchAsync(

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace DogfighterAD.Domain.Snapshots;
 
 public sealed record AdGpoSysvolFile
@@ -23,6 +25,11 @@ public sealed record AdGpoSetting
     public required FactValueKind ValueKind { get; init; }
     public FactDisposition Disposition { get; init; } = FactDisposition.Stored;
     public int DataLength { get; init; }
+
+    // Additive field: omit null to retain canonical read compatibility with schema-2 artifacts
+    // produced before registry type was collected. Missing does not mean REG_DWORD.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public uint? RegistryValueType { get; init; }
 }
 
 public enum GpoSysvolFileKind

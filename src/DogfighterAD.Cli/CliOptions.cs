@@ -58,6 +58,8 @@ internal static class CliArgumentParser
 
         return args[0].ToLowerInvariant() switch
         {
+            "analyze" => AnalysisArgumentParser.ParseAnalyze(args.Skip(1).ToArray()),
+            "rules" => AnalysisArgumentParser.ParseRules(args.Skip(1).ToArray()),
             "scan" => ParseScan(args.Skip(1).ToArray()),
             "inspect" => ParseInspect(args.Skip(1).ToArray()),
             _ => new CliParseResult(
