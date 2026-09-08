@@ -1,36 +1,105 @@
-# Rule Engine — выполненная проверка поставки
+# Rule Engine — фактический статус проверки
 
-Основа: последняя загрузка `dogfighterAD-main(2).zip`. Эта поставка не подменяет её предыдущими архивами foundation/fixed.
+Этот документ отражает уже выполненную проверку Rule Engine milestone после интеграции исходного пакета, исправления контрактов evidence/absence и live MINILAB прогона.
 
-**Сборка C#, restore NuGet, xUnit и проверки на живом AD/SMB не выполнялись: в рабочей среде отсутствует .NET SDK.** Наличие тестов и статических проверок не является утверждением об успешной компиляции или готовности к production.
+## Текущий validated baseline
 
-## Что действительно проверено
+Проверенный feature head перед merge:
+
+`13bcf2072f59506df6cafa489725cbe254ad6833`
+
+Merge в `foundation/snapshot-core`:
+
+`00a905a0b571957e581f22a6501dcfa26d081a9e`
+
+Promotion в `main`:
+
+`4514c187a4d7e7f3af2c568473fb665698059ad4`
+
+## Что фактически проверено
 
 | Проверка | Результат |
 | --- | --- |
-| Лексический просмотр C# через Pygments | 124 файла, 0 токенов ошибки; это не компилятор и не Roslyn |
-| Разбор XML проектов и общего props | 8 файлов успешно прочитаны |
-| Ссылки ProjectReference | Все целевые проекты существуют |
-| JSON примеров и YAML workflow | Синтаксический разбор успешен |
-| Исходный каталог правил | 80 уникальных ID, все представлены в `docs/RULES.md` |
-| Маркеры незавершённых merge-конфликтов | В C# не обнаружены |
-| Выбранные маркеры сетевого доступа и текущего wall-clock в Application/Analysis | Не обнаружены; проверка не заменяет полноценный анализ зависимостей |
-| `bash scripts/verify.sh` | Фактически запущен; остановлен с кодом **127** до restore/build/test: SDK отсутствует |
+| .NET restore/build на Windows | Успешно |
+| Локальный `scripts/verify.ps1` | 678 тестов, 0 errors, 0 failed, 0 skipped |
+| Каталог правил | `dogfighterad.core/1.0.0`, 80 rule IDs, exit 0 |
+| GitHub CI feature head | Windows + Ubuntu build/test/catalog smoke — success |
+| Self-contained Windows publish smoke | success |
+| Live `audit-full` на MINILAB с WORKGROUP Windows host | Complete, exit 0 |
+| LDAP auth/protection | Negotiate + sign/seal, exact FQDN server |
+| Explicit-credential SYSVOL | Portable Kerberos, application-owned SMB path |
+| Collection coverage | Все запрошенные capabilities Complete, issues=0 |
+| Offline analysis | 80 rules evaluated; JSON/HTML reports generated |
+| Missing-evidence semantics | Не наблюдавшиеся поля остаются `NotVerified`, не подменяются defaults |
 
-Машиночитаемая запись: [`validation/rule-engine-static.json`](validation/rule-engine-static.json).
-Проверка применимости патча и точного совпадения исходников записана отдельно в [`validation/rule-engine-packaging.json`](validation/rule-engine-packaging.json).
+## Live MINILAB Rule Engine acceptance
 
-## Написанные тесты — не результаты запуска
+Свежий `audit-full` snapshot был собран с explicit credential `MINILAB\alice` против `dc.mini.lab` с hidden password prompt и portable Kerberos SYSVOL.
 
-Добавлены 19 `[Fact]`-методов, 69 строк `InlineData` и 324 сценария из генераторов `MemberData`: всего **412 сценариев по статическому подсчёту исходников**. xUnit discovery и выполнение здесь не запускались. Это не 412 успешно пройденных тестов.
+Collection result:
 
-Тестовые файлы находятся в `tests/DogfighterAD.Core.Tests/Analysis/` и покрывают семейства правил, отсутствующие/неверные/скрытые/противоречивые факты, версии контрактов, доказательства членств, циклы групп, сохранение исходного типа реестра, детерминизм, JSON/HTML, CLI и новые поля коллектора. Изменены ожидания production composition в существующем наборе тестов.
+- snapshot status: `Complete`;
+- target: `dc.mini.lab`;
+- domains=1;
+- users=8;
+- groups=50;
+- computers=2;
+- ous=1;
+- memberships=41;
+- gpos=2;
+- все directory/GPO/SYSVOL capabilities: `Complete`;
+- collection issues: 0;
+- exit code: 0.
 
-Ни вымышленные TRX/XML-результаты, ни якобы собранные бинарные файлы в архив не включены.
+После исправления evidence contracts/LDAP attribute absence proof итоговый offline analysis показал:
 
-## Проверка после распаковки
+- rules: 80;
+- findings: 22;
+- `Present`: 8;
+- `Potential`: 14;
+- `NotDetected`: 529;
+- `NotApplicable`: 75;
+- `NotVerified`: 2;
+- `Error`: 0.
 
-Требуется .NET 10 SDK и доступ к источникам NuGet для restore. Существующие версии зависимостей сохранены.
+Оставшиеся два `NotVerified` относятся только к `AD.USER.REPLICATED_LOGON_AGE` для пользователей `bob` и `dave`, где `user.lastLogonTimestamp` действительно не был наблюдён. Это считается корректным fail-closed результатом, а не дефектом, который нужно скрывать ради `not-verified=0`.
+
+Findings по severity в этом стенде:
+
+- High: 9;
+- Medium: 12;
+- Low: 1.
+
+Конкретные findings отражают состояние лаборатории и не являются универсальным baseline для других доменов.
+
+## CI после последнего evidence fix
+
+Feature commit `13bcf2072f59506df6cafa489725cbe254ad6833` прошёл GitHub CI полностью:
+
+- Ubuntu restore/build/unit tests/rule catalog smoke — success;
+- Windows restore/build/unit tests/rule catalog smoke — success;
+- Windows self-contained publish smoke — success.
+
+После merge в foundation отдельный promotion PR в `main` также прошёл отдельный CI перед merge.
+
+## Старое static-only происхождение
+
+Исходный импорт Rule Engine сопровождался статическими packaging-проверками до наличия .NET SDK в authoring environment. Эти записи сохранены только как provenance:
+
+- [`validation/rule-engine-static.json`](validation/rule-engine-static.json)
+- [`validation/rule-engine-packaging.json`](validation/rule-engine-packaging.json)
+
+Они больше не являются главным источником статуса готовности. Фактическая build/test/live validation выше имеет приоритет.
+
+## Что ещё не проверено
+
+- Live Linux Kerberos/SMB SYSVOL path остаётся pending.
+- Fuller GOAD end-to-end acceptance остаётся pending.
+- LDAP request/page budgets и peak-memory/resource thresholds ещё не измерены на нескольких размерах каталогов.
+- GPO/ACE rules не являются полным RSoP/effective-rights engine.
+- Per-user resultant PSO, AD CS, RBCD, LAPS, full attack-path graph analysis и multi-domain/forest assessment остаются будущими milestones.
+
+## Повторяемая локальная проверка
 
 PowerShell:
 
@@ -38,27 +107,19 @@ PowerShell:
 ./scripts/verify.ps1
 ```
 
-Linux/macOS:
+Каталог правил:
 
-```sh
-bash scripts/verify.sh
+```powershell
+./src/DogfighterAD.Cli/bin/Release/net10.0/dogfighter.exe rules
 ```
 
-Эквивалентные команды для используемого в проекте исполняемого xUnit v3/Microsoft Testing Platform runner:
+Offline analysis:
 
-```sh
-dotnet restore tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj
-dotnet build tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj -c Release --no-restore
-dotnet run --project tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj -c Release --no-build
-dotnet run --project src/DogfighterAD.Cli/DogfighterAD.Cli.csproj -c Release --no-build -- rules --format json
+```powershell
+./src/DogfighterAD.Cli/bin/Release/net10.0/dogfighter.exe analyze `
+  --snapshot .\audit.dogad `
+  --output .\analysis.json `
+  --fail-on none
 ```
 
-CI выполняет build/test на Windows и Ubuntu; добавлен smoke-вызов офлайн-каталога. Изменение workflow в архиве не означает, что удалённый CI уже был запущен.
-
-## Критерии приёмки на стенде
-
-Проверить на известной конфигурации AD: domain defaults и отдельную PSO, права чтения их полей, nonempty/empty GPP signal, исходный REG_DWORD в Registry.pol и security template, ACL с object-specific ACE и порядок, группы с диапазонами/primary group/циклом. Сверить доказательства с исходными настройками и числом объектов. Затем повторить анализ со скрытыми атрибутами и частичным сбором: ожидается `NotVerified`/`Partial`, а не чистый результат.
-
-Отдельно измерить память и время на реальном объёме снимка: ограничение размера артефакта/числа evaluations не является доказанным общим лимитом working set.
-
-GPO/ACE-кандидаты не являются расчётом эффективных прав или результирующей политики. Per-user resultant PSO, RSoP, AD CS, RBCD и LAPS не реализованы и не имитируются правилами-заглушками. См. [docs/RULE_ENGINE.md](docs/RULE_ENGINE.md).
+Для exact semantics см. [`docs/RULE_ENGINE.md`](docs/RULE_ENGINE.md) и [`docs/CLI.md`](docs/CLI.md).

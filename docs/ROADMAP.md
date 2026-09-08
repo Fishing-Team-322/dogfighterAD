@@ -1,12 +1,10 @@
 # Roadmap and implementation status
 
-> **Rule Engine 0.2.0 update:** see [RULE_ENGINE.md](RULE_ENGINE.md) for the implemented offline engine, 80 rules, expanded collection contracts, schema-2 compatibility and exact CLI/verification semantics. Historical checkpoints below are retained as history.
+This document tracks the current repository state after the validated Rule Engine 0.2.x milestone. An item is marked complete only when code and automated checks exist; live-lab claims are called out separately.
 
-This document tracks what is actually implemented in the repository. An item is marked complete only when code and automated checks exist.
+## Foundation — validated baseline
 
-## Foundation — current branch
-
-- [x] .NET 10 LTS baseline, warnings as errors and deterministic builds.
+- [x] .NET 10 baseline, warnings as errors and deterministic builds.
 - [x] Snapshot-first/read-only architecture ADRs.
 - [x] Versioned normalized snapshot schema and generic directory-object fallback.
 - [x] Observed facts, provenance/redaction disposition and stable versioned `FactId` generation.
@@ -14,81 +12,108 @@ This document tracks what is actually implemented in the repository. An item is 
 - [x] Deterministic fragment merge/assembly and snapshot invariant validation.
 - [x] Capability-driven collection planner with cycle/provider validation.
 - [x] Staged executor with bounded concurrency, cancellation, timeout and dependency blocking.
-- [x] Built-in `minimal` and `audit-full` profiles with explicit capability sets.
-- [x] Execution duration/status telemetry.
-- [x] Read-only LDAP transport, paged streaming enumeration and binary attributes.
-- [x] DACL-only SD requests plus portable v1 DACL parser.
-- [x] Read-only SYSVOL transport boundary with approved-source/root/child validation plus file-count/file-size guardrails.
-- [x] Bounded SYSVOL file streaming that stops after maxBytes+1 detection instead of buffering unbounded growth.
-- [x] Hard lifecycle/deadline boundary for blocking SYSVOL filesystem operations via a disposable helper process with forced termination/restart.
-- [x] Portable deterministic `.dogad` artifact serializer/reader in a separate module.
-- [x] `.dogad` manifest/payload integrity checks, canonical representation checks and strict v1 entry allowlist.
-- [x] Thin read-only CLI composition layer with `scan` and offline `inspect`.
-- [x] Verified artifact publication: temporary write -> strict `.dogad` readback -> final replace.
-- [x] CLI credential-argument rejection, Ctrl+C cancellation and structured completion exit codes.
-- [x] GitHub Actions build/test pipeline and core unit-test suite.
-- [x] Living architecture/capability/profile/format/CLI/handoff documentation.
+- [x] Built-in `minimal` and `audit-full` profiles.
+- [x] Read-only paged/streaming LDAP transport and DACL-only security-descriptor reads.
+- [x] Read-only SYSVOL scope enforcement, byte/file limits and isolated worker lifecycle.
+- [x] Portable explicit-credential Kerberos + SMB 3.1.1 SYSVOL transport with required signing.
+- [x] Deterministic portable `.dogad` artifact with strict integrity/readback validation.
+- [x] Thin CLI composition for `scan`, `inspect`, `rules`, and offline `analyze`.
+- [x] GitHub Actions build/test pipeline on Windows and Ubuntu plus Windows self-contained publish smoke.
 
 ## Collection Core v1
 
-- [x] RootDSE discovery / `directory.core`.
-- [x] Default-domain metadata / `directory.domains`.
-- [x] Users, groups, computers and OUs in one paged subtree pass.
-- [x] Range-safe memberships, nested direct edges, primary groups and FSP support.
+- [x] RootDSE / `directory.core`.
+- [x] Domain metadata / `directory.domains`.
+- [x] Users, groups, computers and OUs.
+- [x] Range-safe memberships, primary groups and FSP support.
 - [x] Local configured trusts.
 - [x] DACL/security descriptors and supported ACEs.
-- [x] GPO metadata.
-- [x] GPO links/order/options and Block Inheritance.
-- [x] Read-only SYSVOL file inventory and supported GPO setting normalization.
-- [x] SYSVOL root/child scope rejection before reads, with explicit alternate-authority configuration.
-- [x] Blocking SYSVOL filesystem operations isolated from the long-lived scanner process and terminated on operation timeout/cancellation.
-- [x] `minimal` / `audit-full` profiles; `audit-full` deliberately includes `gpo.sysvol`.
-- [x] Deterministic portable `.dogad v1` artifact.
-- [x] SHA-256 payload integrity metadata and strict artifact reader.
-- [x] Runnable composition path from profile -> collectors -> `AdSnapshot` -> `.dogad` -> offline readback in synthetic tests.
-- [ ] Cross-platform application-owned SYSVOL authentication/SMB transport proven from a non-domain Windows host and Linux without relying on a pre-existing OS SMB session.
+- [x] GPO metadata and links.
+- [x] Read-only SYSVOL inventory and supported GPO setting normalization.
+- [x] Domain password/lockout defaults, machine-account quota and PSO collection for offline rules.
+- [x] Complete `audit-full` live validation from a non-domain/WORKGROUP Windows workstation using explicit credentials and portable Kerberos SYSVOL.
+- [ ] Live Linux Kerberos/SMB SYSVOL validation.
 - [ ] LDAP request/page counting and per-capability query budgets.
 - [ ] Peak-memory/resource telemetry and benchmark-derived thresholds.
-- [ ] Live end-to-end validation against MINILAB/GOAD.
+- [ ] Fuller GOAD live end-to-end validation.
 - [ ] Better partial-result accounting based on real referral/inaccessible-NC/SYSVOL failure fixtures.
 
-## Collection Core v1.1
+## Analysis Core
 
-- [ ] Broader Kerberos-relevant account posture beyond fields already captured in v1.
+- [x] Offline Rule Engine with capability/version prerequisites and explicit `NotVerified`.
+- [x] Stable finding fingerprints.
+- [x] Evidence references back to snapshot observations.
+- [x] Deterministic rule-pack execution and metadata/versioning.
+- [x] Initial auditor-focused built-in pack with 80 rule IDs.
+- [x] JSON and HTML report generation.
+- [x] Safe handling of missing/omitted LDAP fields without substituting CLR defaults.
+- [ ] Finding lifecycle: `new` / `existing` / `resolved`.
+- [ ] Snapshot diff/retest engine.
+- [ ] Accepted-risk / suppression model with audit trail.
+- [ ] Graph projection/path analysis as a separate analysis module.
+
+## Audit workflow
+
+- [x] `scan` producing a verified `.dogad` artifact.
+- [x] Offline `inspect` showing snapshot/coverage/object summary.
+- [x] Offline `rules` catalog command.
+- [x] Offline `analyze` loading `.dogad` without reconnecting to AD.
+- [x] Machine-readable JSON analysis report.
+- [x] Human-readable HTML analysis report.
+- [x] Explicit analysis exit semantics for complete, partial, threshold-triggered and error outcomes.
+- [ ] Snapshot diff / retest workflow.
+- [ ] Finding lifecycle across repeated assessments.
+- [ ] Suppression / accepted-risk model with audit trail.
+- [ ] Historical assessment store.
+
+## Product/UI layer
+
+### 0.2.1 — contract/documentation stabilization
+
+- [x] Rule Engine and report schema exist as a stable offline integration surface.
+- [ ] Keep README/CLI/roadmap/validation docs synchronized with the validated baseline.
+- [ ] Add/maintain deterministic sample reports for UI fixtures (`Complete`, `Partial/NotVerified`, findings-heavy).
+- [ ] Expose UI-facing Application services so the UI does not shell out to the CLI for core operations.
+
+### 0.3.0 — local web UI, offline-first
+
+- [ ] Local HTTP host backed by the existing .NET Application/Analysis core.
+- [ ] Open/import `.dogad` snapshot.
+- [ ] Run offline analysis.
+- [ ] Dashboard with assessment completion, coverage and severity summary.
+- [ ] Findings list with severity/category/outcome filters.
+- [ ] Finding detail with affected subject, evidence and missing-data explanation.
+- [ ] Coverage/capability view.
+- [ ] Snapshot metadata view.
+- [ ] JSON/HTML export from the same analysis model.
+
+The first UI milestone is intentionally **not graph-dependent**. A graph visualization will only be added after graph projection/path-analysis semantics are implemented and validated. DogfighterAD will not introduce a graph database or graph UI solely to imitate another product.
+
+### 0.3.1 — collection UX
+
+- [ ] Scan wizard for target/profile/authentication selection.
+- [ ] Hidden interactive credential entry; no password argv/environment persistence.
+- [ ] Collector progress and cancellation.
+- [ ] Live coverage/issues display.
+- [ ] Save `.dogad` then analyze through the same core services.
+
+### 0.4.0 — retest and lifecycle
+
+- [ ] Snapshot/report comparison.
+- [ ] `new` / `existing` / `resolved` finding states using stable fingerprints.
+- [ ] Accepted-risk/suppression records with audit history.
+- [ ] Historical trend views in the UI.
+
+## Collection Core v1.1 / later analysis
+
+- [ ] Broader Kerberos-relevant account posture.
 - [ ] Additional delegation relationships and host/protocol context.
 - [ ] LAPS posture and who-can-read relationships without collecting managed passwords by default.
 - [ ] gMSA posture/access relationships without collecting secret blobs by default.
 - [ ] AD CS directory topology/security configuration.
 - [ ] Sites/subnets/forest topology and multi-domain collection.
 - [ ] Additional conditional/callback ACE families when justified by real fixtures.
-
-## Analysis Core
-
-- [ ] Rule engine with capability/version prerequisite checks and explicit `NotVerified`.
-- [ ] Stable finding fingerprints.
-- [ ] Evidence references back to snapshot observations.
-- [ ] Deterministic rule-pack execution and metadata/versioning.
-- [ ] Finding lifecycle: new / existing / resolved.
-- [ ] Initial auditor-focused AD rule pack.
-- [ ] Graph projection/path analysis as a separate analysis module.
-
-## Audit workflow
-
-- [x] CLI `scan` producing a verified `.dogad` artifact.
-- [x] Offline `inspect` loading `.dogad` without reconnecting to AD and showing coverage/count summary.
-- [ ] Offline `analyze` loading `.dogad` without reconnecting to AD; blocked on Rule Engine.
-- [ ] Snapshot diff / retest workflow.
-- [ ] JSON export and HTML audit report.
-- [ ] Machine-readable coverage report beyond the current console summary.
-- [ ] Suppression / accepted-risk model with audit trail.
-
-## Later product layers
-
-- [ ] Company-friendly UX over the same core.
-- [ ] Scheduled/continuous assessment mode.
-- [ ] External-data import adapters where technically/legal appropriate.
-- [ ] Separate Validation Plane / Validation Node contracts.
-- [ ] Controlled active validation only after read-only assessment is mature and measurable.
+- [ ] Graph projection/path analysis once evidence semantics are defined.
 
 ## Explicitly not doing yet
 
@@ -96,32 +121,17 @@ This document tracks what is actually implemented in the repository. An item is 
 - Runtime arbitrary third-party DLL loading.
 - Automatic exploitation or credential dumping.
 - Collecting secrets merely because they are readable.
-- A custom graph database before measurements justify it.
+- A custom graph database before measurements and analysis semantics justify it.
+- Graph visualization without a validated graph-analysis model behind it.
 - Reimplementing every existing AD security tool instead of building a coherent assessment workflow.
 
-## Immediate next stopping-point tasks
+## Quality gates before the first auditor-facing UI build
 
-0. Keep the domain-joined MINILAB Windows VM as a control environment and execute/record `audit-full` there, because LDAP and both direct-DC/domain-style SYSVOL paths are manually proven on that host. Do not assume any resulting failure is automatically a collector bug; permissions, DNS and lab state remain possible causes.
-1. Build a bounded portability prototype, separate from the production collector path: from explicit credentials, obtain the Kerberos material needed for `cifs/<selected-dc>` and read exactly one known `GPT.INI` over an application-owned SMB2/3 client from (a) the non-domain Windows workstation and (b) Linux.
-2. The prototype must not weaken SYSVOL security semantics. It must verify/anchor the intended server identity, require appropriate SMB signing/integrity, preserve the existing validated `SYSVOL/<domain>/Policies/<gpo-guid>` scope, enforce byte/time limits, and never place passwords in argv, environment variables, logs or temporary files.
-3. Treat SMBLibrary and Kerberos.NET only as candidates during the spike. Before production integration, prove their interoperability against the lab, record negotiated SMB/authentication properties, review licensing/packaging, and keep exact failure-stage diagnostics. If either platform fails, do not paper over the failure with silent NTLM downgrade or relaxed path policy.
-4. Only if the prototype passes on both non-domain Windows and Linux, integrate the portable SMB/authentication path behind the existing `IReadOnlySysvolClient`/worker isolation boundary and add regression/integration coverage. Keep the current filesystem-backed path as a control or compatibility backend until the new transport is proven.
-5. After the live path is understood, instrument LDAP request/page counts and measure query volume, duration and peak memory before setting budgets.
-6. Repeat the same validated workflow on the fuller GOAD fixture.
-7. Then implement the Rule Engine with capability-version prerequisites, stable finding fingerprints, evidence references, deterministic results and explicit `NotVerified` semantics.
-8. Build the first high-value auditor rule pack, then diff/retest, JSON/HTML reporting and graph projection.
-
-The CLI composition landed in commit `76034c859d4798fef551865d9ad36f72e1ca2da8`. CI run `34014916366` passed on Linux and Windows; the Linux execution reported 120 tests with no errors, failures or skips. This proves the synthetic/offline composition and artifact round trip, **not** live AD correctness.
-
-SYSVOL scope, bounded streaming and blocking-I/O lifecycle blockers from the 2026-09-06 foundation review are closed in the offline/cross-platform regression layer. Real AD/SMB/DFS semantics remain live integration questions.
-
-## Quality gates before first auditor-facing build
-
-1. Clean and intentionally vulnerable AD fixtures exist.
-2. Collection failures cannot silently become negative findings.
-3. `.dogad` is reproducible, integrity-checked and can be consumed offline.
-4. Core collectors have live lab integration coverage.
-5. Planted misconfigurations have expected findings plus clean-state false-positive regressions.
-6. Collection time, LDAP query/page count and peak memory are measured on multiple directory sizes.
-7. Every finding explains the fact/evidence that caused it.
-8. The read-only claim is validated by code review and integration tests.
+1. Collection failures cannot silently become negative findings.
+2. `.dogad` remains reproducible, integrity-checked and consumable offline.
+3. Core collectors and Rule Engine remain covered by Windows/Ubuntu CI.
+4. MINILAB live acceptance remains reproducible and documented.
+5. Every finding can explain the fact/evidence that caused it.
+6. Partial/missing evidence remains visible as `NotVerified`, never a false clean result.
+7. UI uses the same core analysis/collection services as CLI rather than duplicating security logic.
+8. Credentials and sensitive transport material never enter browser storage, argv, logs or persisted UI state.
