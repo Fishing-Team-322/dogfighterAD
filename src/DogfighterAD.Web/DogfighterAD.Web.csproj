@@ -16,6 +16,12 @@
                       ReferenceOutputAssembly="false" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Update="wwwroot\**\*"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <Target Name="CopySysvolWorker" AfterTargets="Build">
     <ItemGroup>
       <SysvolWorkerFiles Include="$(MSBuildThisFileDirectory)..\DogfighterAD.SysvolWorker\bin\$(Configuration)\net10.0\**\*" />
