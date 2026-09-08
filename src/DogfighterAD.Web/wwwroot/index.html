@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DogfighterAD</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="brand">DogfighterAD</div>
+      <div class="subtitle">Offline Active Directory security assessment</div>
+    </div>
+    <div id="hostStatus" class="host-status">Local UI</div>
+  </header>
+
+  <main class="page">
+    <section class="panel import-panel">
+      <div>
+        <h1>Open a snapshot</h1>
+        <p>Select a local <code>.dogad</code> artifact. Analysis runs locally and does not reconnect to Active Directory.</p>
+      </div>
+      <div class="import-actions">
+        <input id="snapshotFile" type="file" accept=".dogad,application/octet-stream">
+        <button id="analyzeButton" type="button">Analyze snapshot</button>
+      </div>
+      <div id="message" class="message" aria-live="polite"></div>
+    </section>
+
+    <section id="workspace" class="workspace hidden">
+      <section class="summary-grid" id="summaryGrid"></section>
+
+      <section class="panel metadata-panel">
+        <div>
+          <span class="label">Snapshot</span>
+          <strong id="snapshotId">—</strong>
+        </div>
+        <div>
+          <span class="label">Completed</span>
+          <strong id="snapshotCompleted">—</strong>
+        </div>
+        <div>
+          <span class="label">Rule pack</span>
+          <strong id="rulePack">—</strong>
+        </div>
+        <div class="export-actions">
+          <button id="exportJson" type="button" class="secondary">Export JSON</button>
+          <button id="exportHtml" type="button" class="secondary">Export HTML</button>
+        </div>
+      </section>
+
+      <nav class="tabs" aria-label="Analysis sections">
+        <button class="tab active" data-tab="findings" type="button">Findings</button>
+        <button class="tab" data-tab="coverage" type="button">Coverage</button>
+        <button class="tab" data-tab="unknowns" type="button">Not verified</button>
+      </nav>
+
+      <section id="tab-findings" class="tab-page active">
+        <div class="toolbar panel">
+          <input id="findingSearch" type="search" placeholder="Search rule, title, object…">
+          <select id="severityFilter" aria-label="Severity filter">
+            <option value="all">All severities</option>
+            <option value="Critical">Critical</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+            <option value="Informational">Informational</option>
+          </select>
+          <span id="findingCount" class="muted"></span>
+        </div>
+
+        <div class="finding-layout">
+          <section class="panel finding-list-panel">
+            <div id="findingList" class="finding-list"></div>
+          </section>
+          <section class="panel finding-detail-panel">
+            <div id="findingDetail" class="empty-state">Select a finding to inspect its risk, remediation, affected objects and evidence.</div>
+          </section>
+        </div>
+      </section>
+
+      <section id="tab-coverage" class="tab-page">
+        <section class="panel">
+          <h2>Collection coverage</h2>
+          <p class="muted">Capability status is evidence. Partial or failed collection is never treated as a clean result.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Capability</th><th>Status</th><th>Contract</th><th>Items</th><th>Issues</th></tr>
+              </thead>
+              <tbody id="coverageBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section id="tab-unknowns" class="tab-page">
+        <section class="panel">
+          <h2>Not verified checks</h2>
+          <p class="muted">These are checks that could not reach a trustworthy verdict because required evidence was missing or unusable.</p>
+          <div id="unknownList" class="unknown-list"></div>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>
