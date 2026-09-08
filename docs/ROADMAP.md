@@ -73,21 +73,21 @@ This document tracks the current repository state after the validated Rule Engin
 - [x] Rule Engine and report schema exist as a stable offline integration surface.
 - [x] Keep README/CLI/roadmap/validation docs synchronized with the validated baseline.
 - [ ] Add/maintain deterministic sample reports for UI fixtures (`Complete`, `Partial/NotVerified`, findings-heavy).
-- [ ] Expose UI-facing Application services so the UI does not shell out to the CLI for core operations.
+- [x] UI calls the existing Application/Analysis core directly and does not shell out to the CLI for analysis.
 
 ### 0.3.0 — local web UI, offline-first
 
-- [ ] Local loopback HTTP host backed by the existing .NET Application/Analysis core.
-- [ ] Open/import `.dogad` snapshot.
-- [ ] Run offline analysis without reconnecting to AD.
-- [ ] Dashboard with assessment completion, coverage and severity summary.
-- [ ] Findings list with severity/search filters.
-- [ ] Finding detail with affected subject, risk, remediation and evidence provenance.
-- [ ] Coverage/capability view.
-- [ ] Explicit `NotVerified`/missing-data view.
-- [ ] Snapshot metadata view.
-- [ ] JSON/HTML export from the same in-memory analysis model.
-- [ ] Package the UI into the normal distributable workflow after the first functional host is validated.
+- [x] Local loopback HTTP host backed by the existing .NET Application/Analysis core.
+- [x] Open/import `.dogad` snapshot.
+- [x] Run offline analysis without reconnecting to AD.
+- [x] Dashboard with assessment completion, coverage and severity summary.
+- [x] Findings list with severity/search filters.
+- [x] Finding detail with affected subject, risk, remediation and evidence provenance.
+- [x] Coverage/capability view.
+- [x] Explicit `NotVerified`/missing-data view.
+- [x] Basic snapshot/report metadata view (snapshot ID, collection completion, rule pack).
+- [x] JSON/HTML export from the same in-memory analysis model.
+- [ ] Package the UI into the normal distributable workflow after the first functional host is live-validated.
 
 The first UI milestone is intentionally **not graph-dependent**. A graph visualization will only be added after graph projection/path-analysis semantics are implemented and validated. DogfighterAD will not introduce a graph database or graph UI solely to imitate another product.
 
