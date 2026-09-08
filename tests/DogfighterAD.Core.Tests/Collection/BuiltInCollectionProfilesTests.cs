@@ -17,11 +17,13 @@ public sealed class BuiltInCollectionProfilesTests
         Assert.DoesNotContain(CollectionCapabilities.GroupPolicyMetadata, profile.RequestedCapabilities);
         Assert.DoesNotContain(CollectionCapabilities.GroupPolicyLinks, profile.RequestedCapabilities);
         Assert.DoesNotContain(CollectionCapabilities.GroupPolicySysvol, profile.RequestedCapabilities);
+        Assert.DoesNotContain(CollectionCapabilities.AdcsAuthorities, profile.RequestedCapabilities);
+        Assert.DoesNotContain(CollectionCapabilities.AdcsTemplates, profile.RequestedCapabilities);
         Assert.Equal(2, profile.MaxConcurrency);
     }
 
     [Fact]
-    public void AuditFull_IncludesAllCurrentlyImplementedAuditCapabilitiesButNotPlannedOnes()
+    public void AuditFull_IncludesAllCurrentlyImplementedAuditCapabilitiesButNotLegacyPlaceholder()
     {
         var profile = BuiltInCollectionProfiles.Get(BuiltInCollectionProfiles.AuditFullName);
 
@@ -29,6 +31,11 @@ public sealed class BuiltInCollectionProfilesTests
         Assert.Contains(CollectionCapabilities.GroupPolicyMetadata, profile.RequestedCapabilities);
         Assert.Contains(CollectionCapabilities.GroupPolicyLinks, profile.RequestedCapabilities);
         Assert.Contains(CollectionCapabilities.GroupPolicySysvol, profile.RequestedCapabilities);
+        Assert.Contains(CollectionCapabilities.AdcsAuthorities, profile.RequestedCapabilities);
+        Assert.Contains(CollectionCapabilities.AdcsTemplates, profile.RequestedCapabilities);
+        Assert.Contains(CollectionCapabilities.AdcsPublication, profile.RequestedCapabilities);
+        Assert.Contains(CollectionCapabilities.AdcsAcls, profile.RequestedCapabilities);
+        Assert.Contains(CollectionCapabilities.AdcsTrust, profile.RequestedCapabilities);
         Assert.DoesNotContain(CollectionCapabilities.AdcsDirectory, profile.RequestedCapabilities);
         Assert.Equal(4, profile.MaxConcurrency);
     }
