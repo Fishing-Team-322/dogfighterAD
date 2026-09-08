@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace DogfighterAD.Domain.Snapshots;
 
 public sealed record SnapshotContent
@@ -19,6 +21,14 @@ public sealed record SnapshotContent
     public IReadOnlyList<AdTrust> Trusts { get; init; } = [];
     public IReadOnlyList<AdSecurityDescriptor> SecurityDescriptors { get; init; } = [];
     public IReadOnlyList<AdAce> Aces { get; init; } = [];
+
+    /// <summary>
+    /// Optional to preserve schema-v2 backward compatibility. Snapshots created before AD CS 0.3.2
+    /// deserialize with no CertificateServices value, and canonical serialization omits the null
+    /// property so legacy payloads remain canonical under the current reader.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CertificateServicesSnapshot? CertificateServices { get; init; }
 }
 
 public sealed record SnapshotFragment
