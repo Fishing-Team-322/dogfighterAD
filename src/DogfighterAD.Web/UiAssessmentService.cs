@@ -378,7 +378,7 @@ internal sealed class UiPreparedAssessment : IDisposable
         if (string.IsNullOrWhiteSpace(request.Profile) || !BuiltInCollectionProfiles.TryGet(request.Profile, out var profile))
             throw new ArgumentException("Unknown collection profile.");
 
-        var authentication = request.Authentication?.Trim().toLowerInvariant() ?? string.Empty;
+        var authentication = request.Authentication?.Trim().ToLowerInvariant() ?? string.Empty;
         if (authentication is not ("os-context" or "explicit"))
             throw new ArgumentException("Authentication must be os-context or explicit.");
 
