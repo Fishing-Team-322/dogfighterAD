@@ -1,6 +1,6 @@
 # Roadmap and implementation status
 
-This document tracks the current repository state after the validated Rule Engine 0.2.x milestone. An item is marked complete only when code and automated checks exist; live-lab claims are called out separately.
+This document tracks the current repository state through the 0.3.2 AD CS directory-posture milestone. An item is marked complete only when code and automated checks exist; live-lab claims are called out separately.
 
 ## Foundation — validated baseline
 
@@ -18,7 +18,7 @@ This document tracks the current repository state after the validated Rule Engin
 - [x] Portable explicit-credential Kerberos + SMB 3.1.1 SYSVOL transport with required signing.
 - [x] Deterministic portable `.dogad` artifact with strict integrity/readback validation.
 - [x] Thin CLI composition for `scan`, `inspect`, `rules`, and offline `analyze`.
-- [x] GitHub Actions build/test pipeline on Windows and Ubuntu plus Windows self-contained publish smoke.
+- [x] GitHub Actions build/test pipeline on Windows and Ubuntu plus web/JS/rule-catalog smoke and Windows self-contained publish smoke.
 
 ## Collection Core v1
 
@@ -31,7 +31,7 @@ This document tracks the current repository state after the validated Rule Engin
 - [x] GPO metadata and links.
 - [x] Read-only SYSVOL inventory and supported GPO setting normalization.
 - [x] Domain password/lockout defaults, machine-account quota and PSO collection for offline rules.
-- [x] Complete `audit-full` live validation from a non-domain/WORKGROUP Windows workstation using explicit credentials and portable Kerberos SYSVOL.
+- [x] Complete pre-AD-CS `audit-full` live validation from a non-domain/WORKGROUP Windows workstation using explicit credentials and portable Kerberos SYSVOL.
 - [ ] Live Linux Kerberos/SMB SYSVOL validation.
 - [ ] LDAP request/page counting and per-capability query budgets.
 - [ ] Peak-memory/resource telemetry and benchmark-derived thresholds.
@@ -44,9 +44,10 @@ This document tracks the current repository state after the validated Rule Engin
 - [x] Stable finding fingerprints.
 - [x] Evidence references back to snapshot observations.
 - [x] Deterministic rule-pack execution and metadata/versioning.
-- [x] Initial auditor-focused built-in pack with 80 rule IDs.
+- [x] Auditor-focused built-in pack `dogfighterad.core/1.2.0` with 88 rule IDs.
 - [x] JSON and HTML report generation.
 - [x] Safe handling of missing/omitted LDAP fields without substituting CLR defaults.
+- [x] Evidence-backed nested group membership reused by AD CS enrollment-principal analysis.
 - [ ] Finding lifecycle: `new` / `existing` / `resolved`.
 - [ ] Snapshot diff/retest engine.
 - [ ] Accepted-risk / suppression model with audit trail.
@@ -68,13 +69,6 @@ This document tracks the current repository state after the validated Rule Engin
 
 ## Product/UI layer
 
-### 0.2.1 — contract/documentation stabilization
-
-- [x] Rule Engine and report schema exist as a stable offline integration surface.
-- [x] Keep README/CLI/roadmap/validation docs synchronized with the validated baseline.
-- [ ] Add/maintain deterministic sample reports for UI fixtures (`Complete`, `Partial/NotVerified`, findings-heavy).
-- [x] UI calls the existing Application/Analysis core directly and does not shell out to the CLI for analysis.
-
 ### 0.3.0 — local web UI, offline-first
 
 - [x] Local loopback HTTP host backed by the existing .NET Application/Analysis core.
@@ -85,11 +79,11 @@ This document tracks the current repository state after the validated Rule Engin
 - [x] Finding detail with affected subject, risk, remediation and evidence provenance.
 - [x] Coverage/capability view.
 - [x] Explicit `NotVerified`/missing-data view.
-- [x] Basic snapshot/report metadata view (snapshot ID, collection completion, rule pack).
+- [x] Basic snapshot/report metadata view.
 - [x] JSON/HTML export from the same in-memory analysis model.
-- [ ] Package the UI into the normal distributable workflow after the first end-to-end live UI assessment is validated.
+- [ ] Package the UI into the normal distributable workflow after live UI acceptance.
 
-The first UI milestone is intentionally **not graph-dependent**. A graph visualization will only be added after graph projection/path-analysis semantics are implemented and validated. DogfighterAD will not introduce a graph database or graph UI solely to imitate another product.
+The first UI milestone is intentionally **not graph-dependent**. A graph visualization will only be added after graph projection/path-analysis semantics are implemented and validated.
 
 ### 0.3.1 — integrated assessment workflow
 
@@ -101,30 +95,33 @@ The first UI milestone is intentionally **not graph-dependent**. A graph visuali
 - [x] Cancellation while collection or analysis is active.
 - [x] Save a verified `.dogad` into the current user's local assessment-data directory.
 - [x] Download the generated `.dogad` from the loopback UI.
-- [x] Automatically analyze the completed snapshot and open the existing findings/coverage/NotVerified workspace.
+- [x] Automatically analyze the completed snapshot and open findings/coverage/NotVerified workspace.
 - [x] Keep `Open existing snapshot` as a separate offline-only workflow.
 - [ ] Persist assessment metadata/report history across UI process restarts.
 
-The integrated workflow preserves the snapshot boundary: `UI -> collectors -> verified .dogad -> offline Rule Engine -> findings`. The browser is only a controller/view; LDAP and SYSVOL remain in the local .NET host. Loopback HTTP is not a supported remote deployment mode.
+The integrated workflow preserves the snapshot boundary: `UI -> collectors -> verified .dogad -> offline Rule Engine -> findings`. The browser is only a controller/view; LDAP/SYSVOL/AD CS collection remains in the local .NET host.
 
 ### 0.3.2 — AD CS directory posture and certificate templates
 
-This milestone follows the first usable UI foundation and is intentionally split between directory evidence and CA runtime evidence. Missing CA-side runtime configuration must remain `NotVerified`; DogfighterAD will not infer an ESC condition from data it did not collect.
+This milestone deliberately separates directory evidence from CA runtime evidence. Directory-only evidence can produce narrow posture findings and **Potential** ESC candidates; it cannot prove CA runtime configuration or exploitability.
 
-- [ ] Add read-only Configuration NC collection for `CN=Public Key Services,CN=Services,CN=Configuration,...`.
-- [ ] Collect Enterprise CA / Enrollment Services objects and stable CA identities.
-- [ ] Collect certificate templates, including display name, template OID, schema/version and publication state.
-- [ ] Collect template EKUs / application policies and authentication-relevant purpose information.
-- [ ] Collect `msPKI-Certificate-Name-Flag`, `msPKI-Enrollment-Flag`, `msPKI-Private-Key-Flag`, `msPKI-RA-Signature`, validity and renewal periods, and other reviewed template-security operands.
-- [ ] Collect CA-to-template publication relationships.
-- [ ] Collect `NTAuthCertificates` directory posture where relevant to authentication trust decisions.
-- [ ] Collect DACLs on certificate templates and CA directory objects with evidence/provenance.
-- [ ] Normalize enrollment/auto-enrollment and dangerous control relationships such as `GenericAll`, `GenericWrite`, `WriteDacl`, `WriteOwner` and security-relevant `WriteProperty` candidates.
-- [ ] Add conservative template-focused findings/ESC candidates where directory evidence is sufficient, including dangerous template ACLs, broad enrollment plus authentication-capable template combinations, and subject-name supply conditions.
-- [ ] Keep ESC checks that depend on CA registry/RPC/web-enrollment/runtime state explicitly `NotVerified` until those inputs have their own read-only collectors/contracts.
-- [ ] Add a `Certificate Services` UI area showing CAs, templates, publication, enrollment principals, template flags and ACLs even when no finding is present.
-- [ ] Add contextual relationship visualization only where useful (for example principal -> group -> Enroll -> template -> published CA); no graph database is required for this milestone.
-- [ ] Validate planted vulnerable and clean AD CS fixtures so template findings have both positive and false-positive regression coverage.
+- [x] Add read-only Configuration NC collection for `CN=Public Key Services,CN=Services,CN=Configuration,...`.
+- [x] Collect Enterprise CA / Enrollment Services objects and stable CA identities.
+- [x] Collect certificate templates, including display name, template OID, schema/version and publication state.
+- [x] Collect template EKUs / application policies and authentication-relevant purpose information.
+- [x] Collect `msPKI-Certificate-Name-Flag`, `msPKI-Enrollment-Flag`, `msPKI-Private-Key-Flag`, `msPKI-RA-Signature`, validity and renewal periods.
+- [x] Collect CA-to-template publication relationships.
+- [x] Collect `NTAuthCertificates` directory posture and certificate fingerprints.
+- [x] Collect DACLs on certificate templates and CA directory objects with evidence/provenance.
+- [x] Normalize Enrollment/AutoEnrollment plus dangerous direct directory-control candidates such as `GenericAll`, `GenericWrite`, `WriteDacl`, `WriteOwner` and unrestricted `WriteProperty`.
+- [x] Add 8 evidence-first `ADCS.*` rules, including `ADCS.TEMPLATE.ESC1_CANDIDATE` as a directory-derived `Potential` candidate.
+- [x] Keep CA registry/RPC/web-enrollment/runtime-dependent checks outside the 0.3.2 contracts; missing runtime evidence is never inferred from directory data.
+- [x] Add a `Certificate Services` UI area showing CAs, templates, publication, enrollment principals, template flags, ACLs, findings and evidence even when no finding is present.
+- [x] Reuse the existing membership proof engine for custom/nested enrollment groups rather than hardcoding only well-known broad SIDs.
+- [x] Validate synthetic planted vulnerable and clean AD CS fixtures, including approval/signature gates, unpublished templates, non-authentication EKU, AutoEnroll, dangerous CA/template ACLs, partial/legacy evidence and nested low-privilege membership.
+- [x] Windows/Ubuntu CI: build, unit tests, web asset smoke, JavaScript syntax and offline rule catalog; Windows self-contained publish smoke.
+- [ ] Live MINILAB/GOAD AD CS acceptance with a real Enterprise CA and certificate-template inventory.
+- [ ] Optional relationship/path visualization only after a concrete UI need and semantics justify it; no graph database is required.
 
 ### 0.4.0 — retest and lifecycle
 
@@ -135,11 +132,11 @@ This milestone follows the first usable UI foundation and is intentionally split
 
 ## Collection Core v1.1 / later analysis
 
+- [ ] Read-only CA runtime evidence under separate capability IDs when justified (registry/RPC/service/web enrollment/EPA/NTLM).
 - [ ] Broader Kerberos-relevant account posture.
 - [ ] Additional delegation relationships and host/protocol context.
 - [ ] LAPS posture and who-can-read relationships without collecting managed passwords by default.
 - [ ] gMSA posture/access relationships without collecting secret blobs by default.
-- [ ] AD CS directory topology/security configuration and certificate templates — tracked in the dedicated 0.3.2 milestone above.
 - [ ] Sites/subnets/forest topology and multi-domain collection.
 - [ ] Additional conditional/callback ACE families when justified by real fixtures.
 - [ ] Graph projection/path analysis once evidence semantics are defined.
@@ -150,18 +147,19 @@ This milestone follows the first usable UI foundation and is intentionally split
 - Runtime arbitrary third-party DLL loading.
 - Automatic exploitation or credential dumping.
 - Collecting secrets merely because they are readable.
+- Treating directory-derived AD CS posture as proof of runtime CA exploitability.
 - A custom graph database before measurements and analysis semantics justify it.
 - Graph visualization without a validated graph-analysis model behind it.
-- Reimplementing every existing AD security tool instead of building a coherent assessment workflow.
 
-## Quality gates before the first auditor-facing UI build
+## Quality gates before promotion
 
 1. Collection failures cannot silently become negative findings.
 2. `.dogad` remains reproducible, integrity-checked and consumable offline.
 3. Core collectors and Rule Engine remain covered by Windows/Ubuntu CI.
-4. MINILAB live acceptance remains reproducible and documented.
+4. Live-lab acceptance claims are reproducible and documented separately from synthetic CI.
 5. Every finding can explain the fact/evidence that caused it.
 6. Partial/missing evidence remains visible as `NotVerified`, never a false clean result.
 7. UI uses the same core analysis/collection services as CLI rather than duplicating security logic.
 8. Credentials and sensitive transport material never enter browser storage, argv, logs or persisted UI state.
-9. A UI-created assessment must write and verify its `.dogad` before the snapshot is treated as a saved assessment artifact.
+9. A UI-created assessment writes and verifies its `.dogad` before the snapshot is treated as a saved assessment artifact.
+10. AD CS runtime-dependent conditions require separate runtime evidence and are never inferred from Configuration-NC data.
