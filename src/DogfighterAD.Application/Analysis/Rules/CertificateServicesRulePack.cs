@@ -8,7 +8,7 @@ namespace DogfighterAD.Application.Analysis.Rules;
 /// </summary>
 public static class CertificateServicesRulePack
 {
-    public const string Version = "1.0.0";
+    public const string Version = "1.1.0";
 
-    public static IReadOnlyList<IRule> Create() => AdcsRuleCatalog.Create();
+    public static IReadOnlyList<IRule> Create() => CertificateServicesRuleCatalogV2.Create();
 }
