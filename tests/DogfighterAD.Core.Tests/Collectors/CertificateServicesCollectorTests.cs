@@ -118,8 +118,9 @@ public sealed class CertificateServicesCollectorTests
 
         var result = await collector.CollectAsync(CreateContext(), CancellationToken.None);
 
-        var templateCoverage = Assert.Single(result.Fragment.Coverage.Where(item =>
-            item.CapabilityId == CollectionCapabilities.AdcsTemplates));
+        var templateCoverage = Assert.Single(
+            result.Fragment.Coverage,
+            item => item.CapabilityId == CollectionCapabilities.AdcsTemplates);
         Assert.Equal(CapabilityStatus.Partial, templateCoverage.Status);
         Assert.Contains(templateCoverage.Issues, issue =>
             issue.Code == "collection.adcs.template.operands-missing" &&
