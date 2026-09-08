@@ -3,29 +3,130 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
   <title>DogfighterAD</title>
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/certificate-services.css">
+  <link rel="stylesheet" href="/finding-presentation.css">
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <div class="brand">DogfighterAD</div>
-      <div class="subtitle">Local Active Directory security assessment</div>
-    </div>
-    <div id="hostStatus" class="host-status">Local UI</div>
-  </header>
+  <a class="skip-link" href="#pageTitle">Skip to content</a>
+  <aside id="sidebar" class="sidebar" aria-label="Primary navigation">
+    <div class="brand-block"><a class="brand" href="#overview">Dogfighter<span>AD</span></a><span class="brand-caption">Security assessment</span></div>
+    <button id="closeNavigation" class="sidebar-close secondary" type="button" aria-label="Close navigation">Close <span aria-hidden="true">×</span></button>
+    <div class="nav-label">Workspace</div>
+    <nav class="main-nav" aria-label="Assessment sections">
+        <button id="nav-overview" class="tab nav-item active" data-tab="overview" type="button" aria-controls="tab-overview" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Overview</span>
+        </button>
+        <button id="nav-findings" class="tab nav-item" data-tab="findings" type="button" aria-controls="tab-findings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3 21 7v5c0 5-9 9-9 9s-9-4-9-9V7z"/><path d="M12 8v5m0 3h.01"/></svg><span>Findings</span><span id="navFindingCount" class="nav-count hidden"></span>
+        </button>
+        <button id="nav-certificate-services" class="tab nav-item" data-tab="certificate-services" type="button" aria-controls="tab-certificate-services">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="4" y="3" width="16" height="14" rx="1"/><path d="M8 7h8M8 11h5m-4 6v5l3-2 3 2v-5"/></svg><span>Certificate Services</span>
+        </button>
+        <button id="nav-technical" class="tab nav-item" data-tab="technical" type="button" aria-controls="tab-technical">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m8 6-6 6 6 6m8-12 6 6-6 6M14 3l-4 18"/></svg><span>Technical / Evidence</span>
+        </button>
+        <button id="nav-import" class="tab nav-item" data-tab="import" type="button" aria-controls="tab-import">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5"/></svg><span>Import / Assessment</span>
+        </button>
+    </nav>
+    <div class="sidebar-session"><span class="nav-label">Current snapshot</span><strong id="sessionLabel">No snapshot loaded</strong><small id="sessionCompletion">Import or start an assessment.</small></div>
+    <div class="sidebar-footer"><span class="local-label"><span aria-hidden="true" class="local-dot"></span> Local assessment host</span><div id="hostStatus" class="host-status">Connecting…</div></div>
+  </aside>
+  <div id="navigationBackdrop" class="navigation-backdrop" hidden></div>
+  <div id="mainShell" class="main-shell">
+    <header class="topbar">
+      <div class="topbar-context"><button id="openNavigation" class="secondary menu-toggle" type="button" aria-controls="sidebar" aria-expanded="false" aria-label="Open navigation"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button><span>Assessment workspace</span><span class="context-divider" aria-hidden="true">/</span><strong id="headerContext">No snapshot selected</strong></div>
+      <div class="export-actions"><button id="exportJson" type="button" class="secondary" disabled>Export JSON</button><button id="exportHtml" type="button" class="secondary" disabled>Export HTML</button></div>
+    </header>
+    <main class="page" id="mainContent">
+      <div class="page-heading"><div><span class="eyebrow">DogfighterAD / <span id="sectionContext">Assessment</span></span><h1 id="pageTitle" tabindex="-1">Overview</h1><p id="pageDescription">Security posture and priorities from the current snapshot.</p></div><div id="analysisCompletion" class="hidden"></div></div>
+      <noscript><div class="panel section-panel">JavaScript is required for the local assessment interface.</div></noscript>
+      <div id="workspace" class="workspace">
+        <section id="tab-overview" class="tab-page active" aria-labelledby="nav-overview">
+          <section id="overviewEmpty" class="panel empty-workspace" data-report-empty>
+          <span class="eyebrow">No snapshot loaded</span><h2>Start with an assessment</h2>
+          <p>Import an existing .dogad snapshot or collect a new one. Findings, coverage and evidence will appear here.</p>
+          <button type="button" data-route="import">Import / Assessment <span aria-hidden="true">→</span></button>
+        </section>
+          <div id="overviewContent" class="hidden" data-report-content>
+            <div id="presentationNotice" class="notice hidden" role="status"></div>
+            <section id="summaryGrid" class="summary-grid" aria-label="Assessment summary"></section>
+            <section class="panel metadata-panel" aria-label="Snapshot metadata"><div><span class="label">Snapshot ID</span><strong id="snapshotId" class="mono">—</strong></div><div><span class="label">Snapshot completed</span><strong id="snapshotCompleted">—</strong></div><div><span class="label">Rule pack</span><strong id="rulePack" class="mono">—</strong></div></section>
+            <div class="overview-lower"><section class="panel section-panel"><div class="section-heading"><h2>Findings at a glance</h2><button class="text-button" data-route="findings" type="button">View findings →</button></div><p class="muted">Highest-severity findings emitted by the Rule Engine.</p><div id="overviewFindings"></div></section><section class="panel section-panel"><div class="section-heading"><h2>Evidence &amp; coverage</h2></div><p class="muted">Incomplete collection is never a clean result.</p><div id="overviewCoverage"></div><button class="text-button" data-route="technical" type="button">Inspect technical data →</button></section></div>
+          </div>
+        </section>
+        <section id="tab-findings" class="tab-page" aria-labelledby="nav-findings">
+          <section id="findingsEmpty" class="panel empty-workspace" data-report-empty>
+          <span class="eyebrow">No snapshot loaded</span><h2>Start with an assessment</h2>
+          <p>Import an existing .dogad snapshot or collect a new one. Findings, coverage and evidence will appear here.</p>
+          <button type="button" data-route="import">Import / Assessment <span aria-hidden="true">→</span></button>
+        </section>
+          <div class="hidden" data-report-content>
+            <div class="toolbar panel"><label class="search-field"><span class="sr-only">Search findings</span><input id="findingSearch" type="search" placeholder="Search title, rule, object or reason…"></label><label><span class="sr-only">Severity filter</span><select id="severityFilter" aria-label="Severity filter"><option value="all">All severities</option><option value="Critical">Critical</option><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option><option value="Informational">Informational</option></select></label><label><span class="sr-only">Finding status filter</span><select id="statusFilter" aria-label="Finding status filter"><option value="all">All statuses</option></select></label><button id="clearFindingFilters" type="button" class="secondary">Reset</button><span id="findingCount" class="result-count" aria-live="polite"></span></div>
+            <div id="findingLayout" class="finding-layout"><section class="panel finding-list-panel" aria-label="Finding results"><div class="list-heading"><h2>Findings</h2><span class="muted">Severity · status · object</span></div><div id="findingList" class="finding-list"></div></section><section class="panel finding-detail-panel" aria-label="Selected finding"><button id="backToFindings" class="text-button detail-back" type="button">← Back to findings</button><div id="findingDetail" tabindex="-1"><div class="empty-state">Select a finding to inspect its risk, remediation, affected objects and evidence.</div></div></section></div>
+          </div>
+        </section>
+        <section id="tab-certificate-services" class="tab-page" aria-labelledby="nav-certificate-services">
+          <section class="panel cs-intro section-panel"><div class="section-heading"><h2>Directory PKI inventory</h2><button id="retryCertificateServices" type="button" class="text-button hidden">Retry loading</button></div><p id="certificateServicesStatus" class="muted" aria-live="polite">Run or open an assessment to inspect Certificate Services.</p><section id="certificateServicesSummary" class="summary-grid" aria-label="Certificate Services summary"></section><div id="certificateServicesCoverage"></div></section>
+          <nav id="certificateServicesNav" class="cs-section-nav subnav hidden" role="tablist" aria-label="Certificate Services sections">
+            <button id="cs-tab-authorities" role="tab" aria-selected="true" aria-controls="certificateAuthorities" type="button" class="secondary active" data-cs-section="authorities">CAs</button>
+            <button id="cs-tab-risky" role="tab" aria-selected="false" aria-controls="certificateRiskyTemplates" tabindex="-1" type="button" class="secondary" data-cs-section="risky">Risky templates</button>
+            <button id="cs-tab-templates" role="tab" aria-selected="false" aria-controls="certificateTemplates" tabindex="-1" type="button" class="secondary" data-cs-section="templates">All templates</button>
+            <button id="cs-tab-findings" role="tab" aria-selected="false" aria-controls="certificateFindings" tabindex="-1" type="button" class="secondary" data-cs-section="findings">AD CS findings</button>
+          </nav>
+          <div id="certificateInventoryToolbar" class="toolbar panel hidden"><label class="search-field"><span class="sr-only">Search Certificate Services inventory</span><input id="certificateInventorySearch" type="search" placeholder="Search name, host, DN or OID…"></label><span id="certificateInventoryCount" class="result-count" aria-live="polite"></span></div>
+          <section id="certificateAuthorities" role="tabpanel" tabindex="0" aria-labelledby="cs-tab-authorities"></section>
+          <section id="certificateRiskyTemplates" role="tabpanel" tabindex="0" aria-labelledby="cs-tab-risky" class="hidden"></section>
+          <section id="certificateTemplates" role="tabpanel" tabindex="0" aria-labelledby="cs-tab-templates" class="hidden"></section>
+          <section id="certificateFindings" role="tabpanel" tabindex="0" aria-labelledby="cs-tab-findings" class="hidden"></section>
+        </section>
+        <section id="tab-technical" class="tab-page" aria-labelledby="nav-technical">
+          <section id="technicalEmpty" class="panel empty-workspace" data-report-empty>
+          <span class="eyebrow">No snapshot loaded</span><h2>Start with an assessment</h2>
+          <p>Import an existing .dogad snapshot or collect a new one. Findings, coverage and evidence will appear here.</p>
+          <button type="button" data-route="import">Import / Assessment <span aria-hidden="true">→</span></button>
+        </section>
+          <div class="hidden" data-report-content>
+            <nav id="technicalNav" class="subnav" role="tablist" aria-label="Technical sections"><button id="technical-coverage" type="button" role="tab" class="secondary active" data-technical="coverage" aria-controls="tab-coverage" aria-selected="true">Collection coverage</button><button id="technical-unknowns" type="button" role="tab" class="secondary" data-technical="unknowns" aria-controls="tab-unknowns" aria-selected="false" tabindex="-1">Not verified / Errors</button><button id="technical-evidence" type="button" role="tab" class="secondary" data-technical="evidence" aria-controls="tab-evidence" aria-selected="false" tabindex="-1">Finding evidence</button></nav>
+      <section id="tab-coverage" class="technical-page" role="tabpanel" aria-labelledby="technical-coverage" tabindex="0">
+        <section class="panel section-panel">
+          <h2>Collection coverage</h2>
+          <p class="muted">Capability status is evidence. Partial or failed collection is never treated as a clean result.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Capability</th><th>Status</th><th>Contract</th><th>Items</th><th>Issues</th></tr>
+              </thead>
+              <tbody id="coverageBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
 
-  <main class="page">
+      <section id="tab-unknowns" class="technical-page" role="tabpanel" aria-labelledby="technical-unknowns" tabindex="0">
+        <section class="panel section-panel">
+          <h2>Not verified checks</h2>
+          <p class="muted">These checks could not reach a trustworthy verdict because required evidence was missing or unusable.</p>
+          <div id="unknownList" class="unknown-list"></div>
+        </section>
+      </section>
+
+            <section id="tab-evidence" class="technical-page" role="tabpanel" aria-labelledby="technical-evidence" tabindex="0"><section class="panel section-panel"><div class="section-heading"><h2>Finding evidence</h2><span id="evidenceCount" class="result-count" aria-live="polite"></span></div><p class="muted">Raw evidence attached to emitted findings. Values and provenance are shown as returned by the backend.</p><label class="search-field evidence-search"><span class="sr-only">Search finding evidence</span><input id="evidenceSearch" type="search" placeholder="Search rule, fact, value or collector…"></label><div class="table-wrap"><table><thead><tr><th>Rule / fact</th><th>Value</th><th>Provenance</th><th><span class="sr-only">Action</span></th></tr></thead><tbody id="evidenceBody"></tbody></table></div><div class="pagination"><button id="evidencePrevious" class="secondary" type="button">← Previous</button><span id="evidencePage" class="result-count" aria-live="polite"></span><button id="evidenceNext" class="secondary" type="button">Next →</button></div></section></section>
+          </div>
+        </section>
+        <section id="tab-import" class="tab-page" aria-labelledby="nav-import">
     <section class="workflow-grid">
       <section class="panel workflow-panel">
         <div class="workflow-heading">
           <div>
-            <span class="eyebrow">Recommended workflow</span>
-            <h1>New assessment</h1>
+            <span class="eyebrow">Collect and analyze</span>
+            <h2>New assessment</h2>
             <p>Collect a verified snapshot, save it locally, then analyze it automatically.</p>
           </div>
-          <span class="workflow-number">01</span>
+          
         </div>
 
         <form id="assessmentForm" class="assessment-form" autocomplete="off">
@@ -98,16 +199,18 @@
       <section class="panel workflow-panel">
         <div class="workflow-heading">
           <div>
-            <span class="eyebrow">Offline workflow</span>
-            <h1>Open existing snapshot</h1>
+            <span class="eyebrow">Offline analysis</span>
+            <h2>Open existing snapshot</h2>
             <p>Analyze a local <code>.dogad</code> without reconnecting to LDAP or SYSVOL.</p>
           </div>
-          <span class="workflow-number">02</span>
+          
         </div>
         <div class="import-actions stacked-actions">
+          <label for="snapshotFile" class="input-label">Snapshot file</label>
           <input id="snapshotFile" type="file" accept=".dogad,application/octet-stream">
           <button id="analyzeButton" type="button">Analyze snapshot</button>
         </div>
+        <p class="form-note">The existing .dogad reader and Rule Engine run on the local host. Import does not reconnect to the directory.</p>
         <div id="importMessage" class="message" aria-live="polite"></div>
       </section>
     </section>
@@ -125,105 +228,14 @@
       <div id="collectorProgress" class="collector-progress"></div>
     </section>
 
-    <section id="workspace" class="workspace hidden">
-      <section class="summary-grid" id="summaryGrid"></section>
 
-      <section class="panel metadata-panel">
-        <div>
-          <span class="label">Snapshot</span>
-          <strong id="snapshotId">—</strong>
-        </div>
-        <div>
-          <span class="label">Completed</span>
-          <strong id="snapshotCompleted">—</strong>
-        </div>
-        <div>
-          <span class="label">Rule pack</span>
-          <strong id="rulePack">—</strong>
-        </div>
-        <div class="export-actions">
-          <button id="exportJson" type="button" class="secondary">Export JSON</button>
-          <button id="exportHtml" type="button" class="secondary">Export HTML</button>
-        </div>
-      </section>
-
-      <nav class="tabs" aria-label="Analysis sections">
-        <button class="tab active" data-tab="findings" type="button">Findings</button>
-        <button class="tab" data-tab="certificate-services" type="button">Certificate Services</button>
-        <button class="tab" data-tab="coverage" type="button">Coverage</button>
-        <button class="tab" data-tab="unknowns" type="button">Not verified</button>
-      </nav>
-
-      <section id="tab-findings" class="tab-page active">
-        <div class="toolbar panel">
-          <input id="findingSearch" type="search" placeholder="Search rule, title, object…">
-          <select id="severityFilter" aria-label="Severity filter">
-            <option value="all">All severities</option>
-            <option value="Critical">Critical</option>
-            <option value="High">High</option>
-            <option value="Medium">Medium</option>
-            <option value="Low">Low</option>
-            <option value="Informational">Informational</option>
-          </select>
-          <span id="findingCount" class="muted"></span>
-        </div>
-
-        <div class="finding-layout">
-          <section class="panel finding-list-panel">
-            <div id="findingList" class="finding-list"></div>
-          </section>
-          <section class="panel finding-detail-panel">
-            <div id="findingDetail" class="empty-state">Select a finding to inspect its risk, remediation, affected objects and evidence.</div>
-          </section>
-        </div>
-      </section>
-
-      <section id="tab-certificate-services" class="tab-page">
-        <section class="panel cs-intro">
-          <div>
-            <span class="eyebrow">Directory-derived PKI posture</span>
-            <h2>Certificate Services</h2>
-            <p id="certificateServicesStatus" class="muted">Open this tab after an assessment to load Enterprise CAs, certificate templates and AD CS findings.</p>
-          </div>
-          <section id="certificateServicesSummary" class="summary-grid"></section>
-          <div id="certificateServicesCoverage"></div>
         </section>
-        <nav id="certificateServicesNav" class="cs-section-nav hidden" aria-label="Certificate Services sections">
-          <button type="button" class="secondary" data-cs-section="authorities">CAs</button>
-          <button type="button" class="secondary active" data-cs-section="templates">Templates</button>
-          <button type="button" class="secondary" data-cs-section="findings">Findings</button>
-        </nav>
-        <section id="certificateAuthorities" class="hidden"></section>
-        <section id="certificateTemplates"></section>
-        <section id="certificateFindings" class="hidden"></section>
-      </section>
-
-      <section id="tab-coverage" class="tab-page">
-        <section class="panel">
-          <h2>Collection coverage</h2>
-          <p class="muted">Capability status is evidence. Partial or failed collection is never treated as a clean result.</p>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr><th>Capability</th><th>Status</th><th>Contract</th><th>Items</th><th>Issues</th></tr>
-              </thead>
-              <tbody id="coverageBody"></tbody>
-            </table>
-          </div>
-        </section>
-      </section>
-
-      <section id="tab-unknowns" class="tab-page">
-        <section class="panel">
-          <h2>Not verified checks</h2>
-          <p class="muted">These checks could not reach a trustworthy verdict because required evidence was missing or unusable.</p>
-          <div id="unknownList" class="unknown-list"></div>
-        </section>
-      </section>
-    </section>
-  </main>
-
+      </div>
+      <footer class="page-footer"><span>Evidence-first assessment</span><span>Findings are evaluated on the local host · No external UI resources</span></footer>
+    </main>
+  </div>
   <script src="/app.js" defer></script>
-  <script src="/certificate-services.js" defer></script>
+  <script src="/certificate-services-core.js" defer></script>
+  <script src="/finding-presentation.js" defer></script>
 </body>
 </html>

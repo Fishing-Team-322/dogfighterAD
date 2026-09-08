@@ -2,20 +2,18 @@ const findingPresentationState = {
   analysisId: null,
   view: null,
   mode: 'overview',
-  loading: false
+  loading: null
 };
 
 const baseRenderReport = renderReport;
-const baseRenderSummary = renderSummary;
-const baseRenderFindings = renderFindings;
 const baseRenderFindingDetail = renderFindingDetail;
 const baseRenderUnknowns = renderUnknowns;
-const baseRenderCertificateServices = renderCertificateServices;
 const baseCsRenderTemplates = csRenderTemplates;
 const baseCsRenderAuthorities = csRenderAuthorities;
 const baseCsRenderFindings = csRenderFindings;
 
 function presentationFor(fingerprint) {
+  if (findingPresentationState.analysisId !== state.analysisId) return null;
   return (findingPresentationState.view?.findings ?? []).find(item => item.fingerprint === fingerprint) ?? null;
 }
 
@@ -41,8 +39,8 @@ function friendlyRight(right) {
 
 function presentationModeSwitch() {
   return `<div class="finding-mode-switch" role="group" aria-label="Finding view mode">
-    <button type="button" class="secondary ${findingPresentationState.mode === 'overview' ? 'active' : ''}" data-finding-mode="overview">Overview</button>
-    <button type="button" class="secondary ${findingPresentationState.mode === 'technical' ? 'active' : ''}" data-finding-mode="technical">Technical</button>
+    <button type="button" class="secondary ${findingPresentationState.mode === 'overview' ? 'active' : ''}" data-finding-mode="overview" aria-pressed="${findingPresentationState.mode === 'overview'}">Overview</button>
+    <button type="button" class="secondary ${findingPresentationState.mode === 'technical' ? 'active' : ''}" data-finding-mode="technical" aria-pressed="${findingPresentationState.mode === 'technical'}">Technical</button>
   </div>`;
 }
 
@@ -51,12 +49,16 @@ function bindFindingModeSwitch(finding) {
     button.addEventListener('click', () => {
       findingPresentationState.mode = button.dataset.findingMode;
       renderFindingDetail(finding);
+      els.findingDetail.closest('.finding-detail-panel').scrollTop = 0;
+      els.findingDetail.querySelector(`[data-finding-mode="${findingPresentationState.mode}"]`)?.focus({ preventScroll: true });
     });
   }
   for (const button of els.findingDetail.querySelectorAll('[data-show-technical]')) {
     button.addEventListener('click', () => {
       findingPresentationState.mode = 'technical';
       renderFindingDetail(finding);
+      els.findingDetail.closest('.finding-detail-panel').scrollTop = 0;
+      els.findingDetail.querySelector('[data-finding-mode="technical"]')?.focus({ preventScroll: true });
     });
   }
 }
@@ -70,19 +72,17 @@ function renderConditionList(conditions) {
   }).join('')}</div></section>`;
 }
 
-function renderKeyEvidence(items) {
+function renderKeyEvidence(items, fingerprint = null) {
   if (!items?.length) return '';
   return `<h3>Key evidence</h3><div class="key-evidence-list">${items.map(item => `
     <article class="key-evidence-card">
-      <span class="evidence-label">Key</span>
       <strong>${escapeHtml(item.headline)}</strong>
       ${item.principal ? `<span>${escapeHtml(item.principal)}</span>` : ''}
       ${item.right ? `<span class="key-right">${escapeHtml(item.right)}</span>` : ''}
-      ${item.technicalPrincipal ? `<small>SID: ${escapeHtml(item.technicalPrincipal)}</small>` : ''}
-      ${item.technicalRight ? `<small>Technical right: ${escapeHtml(item.technicalRight)}</small>` : ''}
-      ${item.sourcePath ? `<code>${escapeHtml(item.sourcePath)}</code>` : ''}
+      ${item.value !== null && item.value !== undefined ? `<code>${escapeHtml(item.value)}</code>` : ''}
+      ${item.technicalPrincipal || item.technicalRight || item.sourcePath ? `<details class="key-evidence-source"><summary>Source details</summary>${item.technicalPrincipal ? `<small>SID: <code>${escapeHtml(item.technicalPrincipal)}</code></small>` : ''}${item.technicalRight ? `<small>Technical right: <code>${escapeHtml(item.technicalRight)}</code></small>` : ''}${item.sourcePath ? `<code>${escapeHtml(item.sourcePath)}</code>` : ''}</details>` : ''}
     </article>`).join('')}</div>
-    <button type="button" class="secondary view-raw-evidence" data-show-technical>View raw evidence</button>`;
+    <button type="button" class="text-button view-raw-evidence" ${fingerprint ? `data-open-finding="${escapeHtml(fingerprint)}" data-open-mode="technical"` : 'data-show-technical'}>View raw evidence →</button>`;
 }
 
 function renderPresentationEvidence(title, items, context = false) {
@@ -94,17 +94,17 @@ function renderPresentationEvidence(title, items, context = false) {
 function renderCustomerFindingDetail(finding, presentation) {
   els.findingDetail.innerHTML = `
     ${presentationModeSwitch()}
-    <div class="detail-heading customer-detail-heading"><span class="severity-badge ${severityClass(presentation.severity)}">${escapeHtml(presentation.severity)}</span><div><span class="eyebrow">${escapeHtml(presentation.affectedObject.type)}</span><h2>${escapeHtml(presentation.customerTitle)}</h2><small class="technical-secondary">${escapeHtml(presentation.ruleId)}</small></div></div>
-    <div class="detail-meta"><span>Status <strong>${escapeHtml(presentation.customerStatus)}</strong></span><span>Affected <strong>${escapeHtml(presentation.affectedObject.displayName)}</strong></span><span>Confidence <strong>${escapeHtml(presentation.confidence)}</strong></span></div>
+    <div class="detail-heading customer-detail-heading"><div><span class="eyebrow">${escapeHtml(presentation.affectedObject.type)}</span><h2>${escapeHtml(presentation.customerTitle)}</h2><code class="technical-secondary">${escapeHtml(presentation.ruleId)}</code></div></div>
+    <div class="detail-meta"><span class="severity-badge ${severityClass(presentation.severity)}">${escapeHtml(presentation.severity)}</span>${statusBadge(finding.status)}<span>Confidence <strong>${escapeHtml(presentation.confidence)}</strong></span></div>
+    <div class="customer-object-summary"><span class="label">Affected object</span><strong>${escapeHtml(presentation.affectedObject.displayName)}</strong><small>${escapeHtml(presentation.affectedObject.type)}</small></div>
     ${presentation.statusBoundary ? `<div class="status-boundary"><strong>${escapeHtml(presentation.customerStatus)}</strong><span>${escapeHtml(presentation.statusBoundary)}</span></div>` : ''}
-    <p>${escapeHtml(presentation.summary)}</p>
+    <h3>Summary</h3><p>${escapeHtml(presentation.summary)}</p>
+    <h3>Impact</h3><p>${escapeHtml(presentation.impact)}</p>
+    <section class="recommended-action"><h3>Recommended action</h3><p>${escapeHtml(presentation.recommendation)}</p></section>
     ${renderConditionList(presentation.conditions)}
     ${renderKeyEvidence(presentation.keyEvidence)}
     ${renderPresentationEvidence('Supporting evidence', presentation.supportingEvidence)}
-    ${renderPresentationEvidence('Context evidence', presentation.contextEvidence, true)}
-    <h3>Impact</h3><p>${escapeHtml(presentation.impact)}</p>
-    <h3>Recommended action</h3><p>${escapeHtml(presentation.recommendation)}</p>
-    <h3>Affected object</h3><div class="customer-object-summary"><strong>${escapeHtml(presentation.affectedObject.displayName)}</strong><small>${escapeHtml(presentation.affectedObject.type)}</small></div>`;
+    ${renderPresentationEvidence('Context evidence', presentation.contextEvidence, true)}`;
   bindFindingModeSwitch(finding);
 }
 
@@ -114,98 +114,59 @@ async function loadFindingPresentation(force = false) {
     findingPresentationState.view = null;
     return;
   }
-  if (!force && findingPresentationState.analysisId === state.analysisId && findingPresentationState.view) return;
-  if (findingPresentationState.loading) return;
-
-  findingPresentationState.loading = true;
+  const analysisId = state.analysisId;
+  if (!force && findingPresentationState.analysisId === analysisId && findingPresentationState.view) return;
+  if (!force && findingPresentationState.loading === analysisId) return;
+  findingPresentationState.loading = analysisId;
+  const notice = document.getElementById('presentationNotice');
+  notice.textContent = 'Loading the server-generated Overview presentation. The original technical report is available.';
+  notice.classList.remove('hidden');
   try {
-    const response = await fetch(`/api/analyses/${state.analysisId}/presentation`, { cache: 'no-store' });
+    const response = await fetch(`/api/analyses/${analysisId}/presentation`, { cache: 'no-store' });
     const view = await response.json();
+    if (state.analysisId !== analysisId) return;
     if (!response.ok) throw new Error(view.error || 'presentation-load-failed');
-    findingPresentationState.analysisId = state.analysisId;
+    findingPresentationState.analysisId = analysisId;
     findingPresentationState.view = view;
-    findingPresentationState.mode = 'overview';
+    notice.classList.add('hidden');
     renderSummary(state.report);
     renderFindings();
     renderUnknowns(state.report.evaluations ?? []);
-    if (certificateServicesState.view) renderCertificateServices();
-  } catch (error) {
-    console.warn('Customer presentation unavailable; retaining technical report view.', error);
-    findingPresentationState.analysisId = state.analysisId;
+    if (certificateServicesState.analysisId === analysisId && certificateServicesState.view) renderCertificateServices();
+  } catch {
+    if (state.analysisId !== analysisId) return;
+    findingPresentationState.analysisId = analysisId;
     findingPresentationState.view = null;
+    notice.innerHTML = 'Overview presentation is unavailable. Showing the original technical findings; no interpretation has been generated in the browser. <button type="button" class="text-button" id="retryPresentation">Retry</button>';
+    notice.querySelector('button').addEventListener('click', () => loadFindingPresentation(true));
+    renderSummary(state.report);
+    renderFindings();
   } finally {
-    findingPresentationState.loading = false;
+    if (findingPresentationState.loading === analysisId) findingPresentationState.loading = null;
   }
 }
 
 renderReport = function () {
+  if (findingPresentationState.analysisId !== state.analysisId) {
+    findingPresentationState.view = null;
+    findingPresentationState.mode = 'overview';
+  }
   baseRenderReport();
   void loadFindingPresentation();
 };
 
 renderSummary = function (report) {
-  const summary = findingPresentationState.analysisId === state.analysisId
-    ? findingPresentationState.view?.summary : null;
-  if (!summary) {
-    baseRenderSummary(report);
-    return;
-  }
-
-  const priorities = (summary.topPriorities ?? []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
-  const cards = [
-    ['Overall posture', summary.overallPosture, 'posture'],
-    ['Critical', summary.critical ?? 0, 'critical'],
-    ['High', summary.high ?? 0, 'high'],
-    ['Medium', summary.medium ?? 0, 'medium'],
-    ['Low', summary.low ?? 0, 'low'],
-    ['Not verified', summary.notVerified ?? 0, (summary.notVerified ?? 0) === 0 ? 'ok' : 'warn']
-  ];
-  els.summaryGrid.innerHTML = cards.map(([label, value, tone]) => `
-    <article class="summary-card ${tone}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join('') +
-    `<article class="summary-card priorities"><span>Top priorities</span>${priorities ? `<ol>${priorities}</ol>` : '<strong>No finding priorities emitted</strong>'}</article>`;
+  const summary = findingPresentationState.analysisId === state.analysisId ? findingPresentationState.view?.summary : null;
+  renderDashboard(report, summary);
 };
 
-renderFindings = function () {
-  const view = findingPresentationState.analysisId === state.analysisId ? findingPresentationState.view : null;
-  if (!view) {
-    baseRenderFindings();
-    return;
-  }
-
-  const findings = filteredFindings();
-  els.findingCount.textContent = `${findings.length} shown`;
-  if (findings.length === 0) {
-    els.findingList.innerHTML = '<div class="empty-state">No findings match the current filters.</div>';
-    els.findingDetail.innerHTML = '<div class="empty-state">Select another filter or search term.</div>';
-    return;
-  }
-  if (!findings.some(item => item.fingerprint === state.selectedFingerprint)) state.selectedFingerprint = findings[0].fingerprint;
-
-  els.findingList.innerHTML = findings.map(finding => {
-    const item = presentationFor(finding.fingerprint);
-    const selected = finding.fingerprint === state.selectedFingerprint ? 'selected' : '';
-    const subject = item?.affectedObject?.displayName || finding.affectedObjects?.[0]?.displayName || 'Snapshot scope';
-    const keyReason = item?.keyEvidence?.[0]?.headline || item?.summary || finding.description;
-    return `<button class="finding-row customer-finding-row ${selected}" data-fingerprint="${escapeHtml(finding.fingerprint)}" type="button">
-      <span class="severity-badge ${severityClass(finding.severity)}">${escapeHtml(finding.severity)}</span>
-      <span class="finding-row-main"><strong>${escapeHtml(item?.customerTitle || finding.title)}</strong><span class="finding-key-reason">${escapeHtml(keyReason)}</span><small>${escapeHtml(item?.customerStatus || finding.status)} · ${escapeHtml(subject)}</small><small class="technical-secondary">${escapeHtml(finding.ruleId)}</small></span>
-    </button>`;
-  }).join('');
-
-  for (const button of els.findingList.querySelectorAll('[data-fingerprint]')) {
-    button.addEventListener('click', () => {
-      state.selectedFingerprint = button.dataset.fingerprint;
-      findingPresentationState.mode = 'overview';
-      renderFindings();
-    });
-  }
-  renderFindingDetail(findings.find(item => item.fingerprint === state.selectedFingerprint) ?? findings[0]);
-};
+renderFindings = function () { renderFindingRows(); };
 
 renderFindingDetail = function (finding) {
   const presentation = presentationFor(finding.fingerprint);
   if (!presentation) {
     baseRenderFindingDetail(finding);
+    els.findingDetail.insertAdjacentHTML('afterbegin', '<div class="technical-fallback">Technical report · Overview presentation unavailable</div>');
     return;
   }
   if (findingPresentationState.mode === 'technical') {
@@ -236,13 +197,17 @@ renderUnknowns = function (evaluations) {
       ${(item.missingEvidence ?? []).length ? `<div class="missing-evidence"><strong>Missing evidence</strong><ul>${item.missingEvidence.map(value => `<li>${escapeHtml(value)}</li>`).join('')}</ul></div>` : ''}
       <small class="technical-secondary">${escapeHtml(item.ruleId)} · ${escapeHtml(item.technicalOutcome)}</small>
     </details>`).join('');
+  const raw = document.createElement('details'); raw.className = 'disclosure';
+  raw.innerHTML = '<summary>Original evaluation data</summary><pre></pre>';
+  raw.querySelector('pre').textContent = JSON.stringify(evaluations.filter(item => item.outcome === 'NotVerified' || item.outcome === 'Error'), null, 2);
+  els.unknownList.appendChild(raw);
 };
 
 csRenderAces = function (aces) {
   if (!aces?.length) return '<div class="empty-state compact">No direct ACE rows in the normalized DACL.</div>';
   return `<div class="table-wrap"><table><thead><tr><th>Trustee</th><th>Type</th><th>Rights</th><th>Technical scope</th></tr></thead><tbody>${aces.map(ace => `
     <tr>
-      <td><strong>${escapeHtml(friendlyPrincipal(ace.trusteeSid))}</strong><small>SID: ${escapeHtml(ace.trusteeSid)}</small></td>
+      <td><strong>${escapeHtml(friendlyPrincipal(ace.trusteeSid))}</strong><small>SID: <code>${escapeHtml(ace.trusteeSid)}</code></small></td>
       <td>${escapeHtml(ace.accessType)}${ace.isInherited ? '<small>inherited</small>' : '<small>direct</small>'}</td>
       <td><div class="cs-tags">${(ace.rights ?? []).map(right => `<span class="friendly-right"><strong>${escapeHtml(friendlyRight(right))}</strong><small>${escapeHtml(right)}</small></span>`).join('') || '<span class="muted">No mapped milestone right</span>'}</div></td>
       <td><code>${escapeHtml(ace.objectType || 'all / unscoped')}</code><small>${escapeHtml(ace.accessMask)} · flags ${escapeHtml(ace.aceFlags)}</small></td>
@@ -250,64 +215,36 @@ csRenderAces = function (aces) {
 };
 
 function csPresentationFindingsFor(stableId) {
+  if (findingPresentationState.analysisId !== state.analysisId) return [];
   return (findingPresentationState.view?.findings ?? []).filter(item => item.affectedObject?.stableId === stableId);
 }
 
 function csCustomerObjectSummary(stableId, safeText) {
   const findings = [...csPresentationFindingsFor(stableId)].sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
-  if (!findings.length) return `<section class="customer-object-summary safe-inventory"><span class="eyebrow">Customer summary</span><h3>No risk finding emitted for this object</h3><p>${escapeHtml(safeText)}</p></section>`;
+  if (!findings.length) return `<section class="customer-object-summary safe-inventory"><span class="eyebrow">Finding overview</span><h3>No risk finding emitted for this object</h3><p>${escapeHtml(safeText)}</p></section>`;
   const finding = findings[0];
-  return `<section class="customer-object-summary"><span class="eyebrow">Customer summary</span><h3>${escapeHtml(finding.customerTitle)}</h3><div class="detail-meta"><span>Risk level <strong>${escapeHtml(finding.severity)}</strong></span><span>Status <strong>${escapeHtml(finding.customerStatus)}</strong></span></div><p>${escapeHtml(finding.summary)}</p>${finding.statusBoundary ? `<p class="notverified-caution">${escapeHtml(finding.statusBoundary)}</p>` : ''}${renderConditionList(finding.conditions)}${renderKeyEvidence(finding.keyEvidence)}<h4>Recommended action</h4><p>${escapeHtml(finding.recommendation)}</p></section>`;
+  return `<section class="customer-object-summary"><span class="eyebrow">Finding overview</span><h3>${escapeHtml(finding.customerTitle)}</h3><div class="detail-meta"><span>Risk level <strong>${escapeHtml(finding.severity)}</strong></span><span>Status <strong>${escapeHtml(finding.customerStatus)}</strong></span></div><p>${escapeHtml(finding.summary)}</p>${finding.statusBoundary ? `<p class="notverified-caution">${escapeHtml(finding.statusBoundary)}</p>` : ''}<h4>Recommended action</h4><p>${escapeHtml(finding.recommendation)}</p><button type="button" class="text-button" data-open-finding="${escapeHtml(finding.fingerprint)}">Open finding →</button><details class="disclosure"><summary>Conditions &amp; key evidence</summary>${renderConditionList(finding.conditions)}${renderKeyEvidence(finding.keyEvidence, finding.fingerprint)}</details></section>`;
 }
-
-renderCertificateServices = function () {
-  baseRenderCertificateServices();
-  const view = certificateServicesState.view;
-  const presentation = findingPresentationState.view;
-  if (!view || !presentation || !view.available) return;
-
-  certificateServicesEls.summary.innerHTML = [
-    ['Enterprise CAs', view.authorities?.length ?? 0],
-    ['Certificate templates', view.templates?.length ?? 0],
-    ['Templates requiring attention', new Set((presentation.findings ?? []).filter(item => item.affectedObject?.type === 'Certificate Template').map(item => item.affectedObject.stableId)).size],
-    ['High-risk configurations', (presentation.findings ?? []).filter(item => item.severity === 'High' || item.severity === 'Critical').length]
-  ].map(([label, value]) => `<article class="summary-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join('');
-
-  document.querySelector('.cs-attention')?.remove();
-  const attention = (presentation.findings ?? [])
-    .filter(item => item.affectedObject?.type === 'Certificate Template')
-    .sort((a, b) => severityRank(b.severity) - severityRank(a.severity))
-    .slice(0, 6);
-  if (attention.length) {
-    certificateServicesEls.summary.insertAdjacentHTML('afterend', `<section class="cs-attention"><div class="cs-attention-heading"><div><span class="eyebrow">Templates requiring attention</span><h3>Key reasons</h3></div><span class="muted">Safe templates remain available under Templates.</span></div><div class="attention-grid">${attention.map(item => `<button type="button" class="attention-card" data-attention-template="${escapeHtml(item.affectedObject.stableId)}"><span class="severity-badge ${severityClass(item.severity)}">${escapeHtml(item.severity)}</span><strong>${escapeHtml(item.affectedObject.displayName)}</strong><span>${escapeHtml(item.customerTitle)}</span><small>${escapeHtml(item.keyEvidence?.[0]?.headline || item.summary)}</small></button>`).join('')}</div></section>`);
-    for (const button of document.querySelectorAll('[data-attention-template]')) {
-      button.addEventListener('click', () => {
-        certificateServicesState.selectedTemplate = button.dataset.attentionTemplate;
-        csActivateSection('templates');
-      });
-    }
-  }
-};
 
 csRenderTemplates = function () {
   baseCsRenderTemplates();
-  const detail = certificateServicesEls.templates.querySelector('.cs-detail');
-  if (!detail || !certificateServicesState.selectedTemplate || !findingPresentationState.view) return;
+  const detail = csTemplateContainer().querySelector('.cs-detail');
+  if (!detail || !certificateServicesState.selectedTemplate || !findingPresentationState.view || findingPresentationState.analysisId !== state.analysisId) return;
   detail.querySelector('.customer-object-summary')?.remove();
-  const heading = detail.querySelector('.detail-heading');
-  heading?.insertAdjacentHTML('afterend', csCustomerObjectSummary(
+  const anchor = detail.querySelector(':scope > .detail-meta') || detail.querySelector('.detail-heading');
+  anchor?.insertAdjacentHTML('afterend', csCustomerObjectSummary(
     certificateServicesState.selectedTemplate,
     'The template remains visible as inventory. No customer-facing risk description is added when the Rule Engine emitted no finding.'));
-  for (const button of detail.querySelectorAll('[data-show-technical]')) button.addEventListener('click', () => activateTab('findings'));
+
 };
 
 csRenderAuthorities = function () {
   baseCsRenderAuthorities();
   const detail = certificateServicesEls.authorities.querySelector('.cs-detail');
-  if (!detail || !certificateServicesState.selectedAuthority || !findingPresentationState.view) return;
+  if (!detail || !certificateServicesState.selectedAuthority || !findingPresentationState.view || findingPresentationState.analysisId !== state.analysisId) return;
   detail.querySelector('.customer-object-summary')?.remove();
-  const heading = detail.querySelector('.detail-heading');
-  heading?.insertAdjacentHTML('afterend', csCustomerObjectSummary(
+  const anchor = detail.querySelector(':scope > .detail-meta') || detail.querySelector('.detail-heading');
+  anchor?.insertAdjacentHTML('afterend', csCustomerObjectSummary(
     certificateServicesState.selectedAuthority,
     'No CA directory risk finding was emitted for this object. Runtime CA security is not inferred from that absence.'));
 };
@@ -316,13 +253,13 @@ csRenderFindings = function () {
   const findings = [...(findingPresentationState.view?.findings ?? [])]
     .filter(item => String(item.ruleId ?? '').startsWith('ADCS.'))
     .sort((a, b) => severityRank(b.severity) - severityRank(a.severity) || a.ruleId.localeCompare(b.ruleId));
-  if (!findingPresentationState.view) {
+  if (!findingPresentationState.view || findingPresentationState.analysisId !== state.analysisId) {
     baseCsRenderFindings();
     return;
   }
   if (!findings.length) {
-    certificateServicesEls.findings.innerHTML = '<section class="panel empty-state">No AD CS findings were emitted. Safe inventory remains available under CAs and Templates.</section>';
+    certificateServicesEls.findings.innerHTML = '<section class="panel empty-state">No AD CS findings were emitted. All inventory remains available under CAs and All templates. No clean verdict is inferred.</section>';
     return;
   }
-  certificateServicesEls.findings.innerHTML = `<section class="panel"><h2>AD CS findings</h2><p class="muted">Customer-facing explanations are shown first; directory-derived Potential boundaries are preserved.</p><div class="unknown-list">${findings.map(item => `<details class="unknown-row"><summary><span class="severity-badge ${severityClass(item.severity)}">${escapeHtml(item.severity)}</span> <strong>${escapeHtml(item.customerTitle)}</strong> · ${escapeHtml(item.affectedObject.displayName)}</summary><p>${escapeHtml(item.summary)}</p>${item.statusBoundary ? `<p class="notverified-caution">${escapeHtml(item.statusBoundary)}</p>` : ''}${renderKeyEvidence(item.keyEvidence)}<p><strong>Recommended action:</strong> ${escapeHtml(item.recommendation)}</p><small class="technical-secondary">${escapeHtml(item.ruleId)}</small></details>`).join('')}</div></section>`;
+  certificateServicesEls.findings.innerHTML = `<section class="panel"><h2>AD CS findings</h2><p class="muted">Customer-facing explanations are shown first; directory-derived Potential boundaries are preserved.</p><div class="unknown-list">${findings.map(item => `<details class="unknown-row"><summary><span class="severity-badge ${severityClass(item.severity)}">${escapeHtml(item.severity)}</span> <strong>${escapeHtml(item.customerTitle)}</strong> · ${escapeHtml(item.affectedObject.displayName)} · ${escapeHtml(item.customerStatus)}</summary><p>${escapeHtml(item.summary)}</p>${item.statusBoundary ? `<p class="notverified-caution">${escapeHtml(item.statusBoundary)}</p>` : ''}${renderKeyEvidence(item.keyEvidence, item.fingerprint)}<p><strong>Recommended action:</strong> ${escapeHtml(item.recommendation)}</p><small class="technical-secondary">${escapeHtml(item.ruleId)}</small></details>`).join('')}</div></section>`;
 };

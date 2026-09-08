@@ -3,7 +3,9 @@ const certificateServicesState = {
   view: null,
   selectedSection: 'authorities',
   selectedAuthority: null,
-  selectedTemplate: null
+  selectedTemplate: null,
+  detailOpen: false,
+  requestId: null
 };
 
 const certificateServicesEls = {
@@ -13,7 +15,11 @@ const certificateServicesEls = {
   nav: document.getElementById('certificateServicesNav'),
   authorities: document.getElementById('certificateAuthorities'),
   templates: document.getElementById('certificateTemplates'),
-  findings: document.getElementById('certificateFindings')
+  findings: document.getElementById('certificateFindings'),
+  risky: document.getElementById('certificateRiskyTemplates'),
+  toolbar: document.getElementById('certificateInventoryToolbar'),
+  search: document.getElementById('certificateInventorySearch'),
+  count: document.getElementById('certificateInventoryCount')
 };
 
 function csAdcsFindings() {
@@ -118,37 +124,48 @@ function csRenderNtAuthPosture() {
     ${present ? csCertificateTable(trust.certificates ?? []) : '<div class="empty-state compact">The Configuration-NC search completed without an NTAuthCertificates object. This is a directory inventory result, not a live certificate-validation verdict.</div>'}`;
 }
 
-async function loadCertificateServices(force = false) {
-  if (!state.analysisId) {
-    certificateServicesState.analysisId = null;
-    certificateServicesState.view = null;
-    renderCertificateServices();
-    return;
-  }
-  if (!force && certificateServicesState.analysisId === state.analysisId && certificateServicesState.view) {
-    renderCertificateServices();
-    return;
-  }
+function resetCertificateServices() {
+  certificateServicesState.analysisId = null;
+  certificateServicesState.view = null;
+  certificateServicesState.requestId = null;
+  certificateServicesState.selectedAuthority = null;
+  certificateServicesState.selectedTemplate = null;
+  certificateServicesState.detailOpen = false;
+  certificateServicesEls.search.value = '';
+  for (const node of [certificateServicesEls.summary, certificateServicesEls.coverage, certificateServicesEls.authorities, certificateServicesEls.templates, certificateServicesEls.risky, certificateServicesEls.findings]) node.replaceChildren();
+  certificateServicesEls.nav.classList.add('hidden');
+  certificateServicesEls.toolbar.classList.add('hidden');
+  document.getElementById('retryCertificateServices').classList.add('hidden');
+  certificateServicesEls.status.textContent = 'Run or open an assessment to inspect Certificate Services.';
+}
 
+async function loadCertificateServices(force = false) {
+  if (!state.analysisId) { resetCertificateServices(); return; }
+  const analysisId = state.analysisId;
+  if (!force && certificateServicesState.analysisId === analysisId && certificateServicesState.view) {
+    renderCertificateServices(); return;
+  }
+  if (!force && certificateServicesState.requestId === analysisId) return;
+  certificateServicesState.requestId = analysisId;
   certificateServicesEls.status.textContent = 'Loading Certificate Services inventory…';
+  document.getElementById('retryCertificateServices').classList.add('hidden');
   try {
-    const response = await fetch(`/api/analyses/${state.analysisId}/certificate-services`, { cache: 'no-store' });
+    const response = await fetch(`/api/analyses/${analysisId}/certificate-services`, { cache: 'no-store' });
     const view = await response.json();
+    if (state.analysisId !== analysisId) return; // Never show another snapshot's inventory.
     if (!response.ok) throw new Error(view.error || 'certificate-services-load-failed');
-    certificateServicesState.analysisId = state.analysisId;
+    certificateServicesState.analysisId = analysisId;
     certificateServicesState.view = view;
     certificateServicesState.selectedAuthority = view.authorities?.[0]?.stableId ?? null;
     certificateServicesState.selectedTemplate = view.templates?.[0]?.stableId ?? null;
     renderCertificateServices();
   } catch (error) {
-    certificateServicesState.view = null;
+    if (state.analysisId !== analysisId) return;
+    resetCertificateServices();
     certificateServicesEls.status.textContent = `Certificate Services could not be loaded: ${error.message}`;
-    certificateServicesEls.summary.innerHTML = '';
-    certificateServicesEls.coverage.innerHTML = '';
-    certificateServicesEls.nav.classList.add('hidden');
-    certificateServicesEls.authorities.innerHTML = '';
-    certificateServicesEls.templates.innerHTML = '';
-    certificateServicesEls.findings.innerHTML = '';
+    document.getElementById('retryCertificateServices').classList.remove('hidden');
+  } finally {
+    if (certificateServicesState.requestId === analysisId) certificateServicesState.requestId = null;
   }
 }
 
@@ -159,6 +176,7 @@ function renderCertificateServices() {
     certificateServicesEls.summary.innerHTML = '';
     certificateServicesEls.coverage.innerHTML = '';
     certificateServicesEls.nav.classList.add('hidden');
+    certificateServicesEls.toolbar.classList.add('hidden');
     return;
   }
   if (!view) return;
@@ -175,6 +193,8 @@ function renderCertificateServices() {
     certificateServicesEls.coverage.innerHTML = csCoverageTable(coverage);
     certificateServicesEls.authorities.innerHTML = '';
     certificateServicesEls.templates.innerHTML = '';
+    certificateServicesEls.risky.innerHTML = '';
+    certificateServicesEls.toolbar.classList.add('hidden');
     certificateServicesEls.findings.innerHTML = '';
     return;
   }
@@ -186,6 +206,7 @@ function renderCertificateServices() {
   certificateServicesEls.summary.innerHTML = [
     ['Enterprise CAs', authorityCount],
     ['Templates', view.templates?.length ?? 0],
+    ['Templates with findings', (view.templates ?? []).filter(template => csFindingsFor(template.stableId).length > 0).length],
     ['Published templates', (view.templates ?? []).filter(template => template.publishedAuthorities?.length).length],
     ['NTAuth certificates', view.ntAuth?.certificates?.length ?? 0],
     ['AD CS findings', adcsFindings.length]
@@ -198,26 +219,85 @@ function renderCertificateServices() {
 function csCoverageTable(coverage) {
   if (!coverage?.length) return '<div class="empty-state compact">No AD CS capability coverage records are present.</div>';
   return `<details class="cs-coverage"><summary>AD CS collection coverage</summary><div class="table-wrap"><table><thead><tr><th>Capability</th><th>Status</th><th>Items</th><th>Issues</th></tr></thead><tbody>${coverage.map(item => `
-    <tr><td><code>${escapeHtml(item.capabilityId)}</code></td><td><span class="status-pill status-${String(item.status).toLowerCase()}">${escapeHtml(item.status)}</span></td><td>${escapeHtml(item.observedItemCount)}</td><td>${escapeHtml((item.issueCodes ?? []).join(', ') || '—')}</td></tr>`).join('')}</tbody></table></div></details>`;
+    <tr><td><code>${escapeHtml(item.capabilityId)}</code></td><td><span class="status-pill status-${cssToken(item.status)}">${escapeHtml(item.status)}</span></td><td>${escapeHtml(item.observedItemCount)}</td><td>${escapeHtml((item.issueCodes ?? []).join(', ') || '—')}</td></tr>`).join('')}</tbody></table></div></details>`;
 }
 
 function csActivateSection(section, updateState = true) {
-  if (updateState) certificateServicesState.selectedSection = section;
-  for (const button of certificateServicesEls.nav.querySelectorAll('[data-cs-section]'))
-    button.classList.toggle('active', button.dataset.csSection === section);
-  certificateServicesEls.authorities.classList.toggle('hidden', section !== 'authorities');
-  certificateServicesEls.templates.classList.toggle('hidden', section !== 'templates');
-  certificateServicesEls.findings.classList.toggle('hidden', section !== 'findings');
+  if (!['authorities', 'risky', 'templates', 'findings'].includes(section)) section = 'authorities';
+  if (updateState && section !== certificateServicesState.selectedSection) {
+    certificateServicesState.detailOpen = false;
+    certificateServicesEls.search.value = '';
+  }
+  certificateServicesState.selectedSection = section;
+  for (const button of certificateServicesEls.nav.querySelectorAll('[data-cs-section]')) {
+    const active = button.dataset.csSection === section;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+    button.tabIndex = active ? 0 : -1;
+  }
+  for (const [key, node] of Object.entries({authorities: certificateServicesEls.authorities, risky: certificateServicesEls.risky, templates: certificateServicesEls.templates, findings: certificateServicesEls.findings})) node.classList.toggle('hidden', section !== key);
+  certificateServicesEls.toolbar.classList.toggle('hidden', section === 'findings');
   if (section === 'authorities') csRenderAuthorities();
-  if (section === 'templates') csRenderTemplates();
+  if (section === 'templates' || section === 'risky') csRenderTemplates();
   if (section === 'findings') csRenderFindings();
 }
 
+function csTemplateContainer() {
+  return certificateServicesState.selectedSection === 'risky' ? certificateServicesEls.risky : certificateServicesEls.templates;
+}
+function csMatchesQuery(item) {
+  const query = certificateServicesEls.search.value.trim().toLowerCase();
+  return !query || [item.name, item.displayName, item.commonName, item.dnsHostName, item.stableId, item.distinguishedName, item.templateOid].filter(Boolean).join(' ').toLowerCase().includes(query);
+}
+function csDiscloseDetail(container) {
+  const detail = container.querySelector('.cs-detail');
+  if (!detail) return;
+  // Reorganize existing nodes, without deleting or reinterpreting their data.
+  const groups = [...detail.children].filter(node => node.tagName === 'H3');
+  for (const heading of groups) {
+    const block = document.createElement('details');
+    block.className = 'disclosure cs-disclosure';
+    const summary = document.createElement('summary');
+    summary.textContent = heading.textContent;
+    block.appendChild(summary);
+    let next = heading.nextSibling;
+    while (next && !(next.nodeType === Node.ELEMENT_NODE && next.tagName === 'H3')) {
+      const current = next; next = next.nextSibling; block.appendChild(current);
+    }
+    heading.replaceWith(block);
+  }
+  const back = document.createElement('button');
+  back.type = 'button'; back.className = 'text-button detail-back'; back.textContent = '← Back to inventory';
+  back.addEventListener('click', () => {
+    certificateServicesState.detailOpen = false;
+    container.querySelector('.cs-master-detail')?.classList.remove('detail-open');
+    container.querySelector('.cs-row.selected')?.focus();
+  });
+  detail.prepend(back);
+  detail.tabIndex = -1;
+  for (const button of container.querySelectorAll('.cs-row')) button.setAttribute('aria-pressed', String(button.classList.contains('selected')));
+}
+function csFocusDetail(container) {
+  certificateServicesState.detailOpen = true;
+  container.querySelector('.cs-master-detail')?.classList.add('detail-open');
+  if (matchMedia('(max-width: 1000px)').matches) {
+    container.querySelector('.cs-detail')?.focus({ preventScroll: true });
+    container.querySelector('.cs-detail')?.scrollIntoView({ block: 'start' });
+  }
+}
+
 function csRenderAuthorities() {
-  const authorities = certificateServicesState.view?.authorities ?? [];
+  const focusedId = document.activeElement?.dataset?.csCa;
+  const allAuthorities = certificateServicesState.view?.authorities ?? [];
+  const authorities = allAuthorities.filter(csMatchesQuery);
+  certificateServicesEls.count.textContent = `${authorities.length} / ${allAuthorities.length} CAs`;
+  if (!authorities.length && allAuthorities.length) {
+    certificateServicesEls.authorities.innerHTML = '<div class="panel empty-state">No CAs match this search.</div>';
+    return;
+  }
   if (!authorities.length) {
     certificateServicesEls.authorities.innerHTML = `
-      <section class="panel cs-detail">
+      <section class="panel cs-detail section-panel">
         <div class="detail-heading"><div><span class="eyebrow">Enterprise CA inventory</span><h2>No Enterprise CA objects found</h2></div></div>
         <p>The Configuration-NC search returned no <code>pKIEnrollmentService</code> objects. This is a proven directory inventory result for this assessment, not a claim about CA runtime security.</p>
         <h3>NTAuth directory posture</h3>${csRenderNtAuthPosture()}
@@ -231,8 +311,8 @@ function csRenderAuthorities() {
   const ntauth = csNtAuthStatus(selected);
 
   certificateServicesEls.authorities.innerHTML = `
-    <div class="cs-master-detail">
-      <section class="panel cs-list">${authorities.map(authority => `
+    <div class="cs-master-detail ${certificateServicesState.detailOpen ? 'detail-open' : ''}">
+      <section class="panel cs-list"><div class="list-heading"><h2>Certificate authorities</h2></div>${authorities.map(authority => `
         <button type="button" class="cs-row ${authority.stableId === selected.stableId ? 'selected' : ''}" data-cs-ca="${escapeHtml(authority.stableId)}">
           <strong>${escapeHtml(authority.name || authority.dnsHostName || authority.stableId)}</strong>
           <small>${escapeHtml(authority.dnsHostName || authority.distinguishedName)}</small>
@@ -252,13 +332,21 @@ function csRenderAuthorities() {
     </div>`;
 
   for (const button of certificateServicesEls.authorities.querySelectorAll('[data-cs-ca]'))
-    button.addEventListener('click', () => { certificateServicesState.selectedAuthority = button.dataset.csCa; csRenderAuthorities(); });
+    button.addEventListener('click', () => { certificateServicesState.selectedAuthority = button.dataset.csCa; csRenderAuthorities(); csFocusDetail(certificateServicesEls.authorities); });
+  csDiscloseDetail(certificateServicesEls.authorities);
+  for (const row of certificateServicesEls.authorities.querySelectorAll('[data-cs-ca]')) if (row.dataset.csCa === focusedId) row.focus({ preventScroll: true });
 }
 
 function csRenderTemplates() {
-  const templates = certificateServicesState.view?.templates ?? [];
+  const focusedId = document.activeElement?.dataset?.csTemplate;
+  const allTemplates = certificateServicesState.view?.templates ?? [];
+  const riskyOnly = certificateServicesState.selectedSection === 'risky';
+  const inScope = allTemplates.filter(item => !riskyOnly || csFindingsFor(item.stableId).length > 0);
+  const templates = inScope.filter(csMatchesQuery);
+  const container = csTemplateContainer();
+  certificateServicesEls.count.textContent = `${templates.length} / ${inScope.length} ${riskyOnly ? 'templates with findings' : 'templates'}`;
   if (!templates.length) {
-    certificateServicesEls.templates.innerHTML = '<div class="panel empty-state">No certificate template objects were collected from the Configuration NC.</div>';
+    container.innerHTML = `<div class="panel empty-state">${!allTemplates.length ? 'No certificate template objects were collected from the Configuration NC.' : !inScope.length ? 'No templates have emitted AD CS findings. This is not a clean security verdict; review coverage and Not verified checks.' : 'No templates match this search.'}</div>`;
     return;
   }
   if (!templates.some(item => item.stableId === certificateServicesState.selectedTemplate))
@@ -271,9 +359,9 @@ function csRenderTemplates() {
   const approvalRequired = selected.enrollmentFlags !== null && selected.enrollmentFlags !== undefined
     ? (Number(selected.enrollmentFlags) & 0x2) !== 0 : null;
 
-  certificateServicesEls.templates.innerHTML = `
-    <div class="cs-master-detail">
-      <section class="panel cs-list">${templates.map(template => {
+  container.innerHTML = `
+    <div class="cs-master-detail ${certificateServicesState.detailOpen ? 'detail-open' : ''}">
+      <section class="panel cs-list"><div class="list-heading"><h2>${riskyOnly ? 'Risky templates' : 'All templates'}</h2></div>${templates.map(template => {
         const objectFindings = csFindingsFor(template.stableId);
         return `<button type="button" class="cs-row ${template.stableId === selected.stableId ? 'selected' : ''}" data-cs-template="${escapeHtml(template.stableId)}">
           <strong>${escapeHtml(template.displayName || template.commonName)}</strong>
@@ -291,13 +379,15 @@ function csRenderTemplates() {
         <h3>Validity</h3><div class="cs-kv"><span>Validity period</span><strong>${escapeHtml(csFormatInterval(selected.expirationPeriodTicks))}</strong><span>Overlap period</span><strong>${escapeHtml(csFormatInterval(selected.overlapPeriodTicks))}</strong></div>
         <h3>Enrollment principals</h3>${csEnrollmentPrincipals(selected)}
         <h3>Directory ACL</h3>${csRenderAces(selected.directAces)}
-        <h3>Risk findings</h3>${findings.length ? `<ul class="object-list">${findings.map(finding => `<li><strong>${escapeHtml(finding.title)}</strong><small>${escapeHtml(finding.ruleId)} · ${escapeHtml(finding.status)} · ${escapeHtml(finding.confidence)}</small><p>${escapeHtml(finding.description)}</p></li>`).join('')}</ul>` : '<div class="empty-state compact">No AD CS risk finding for this template. Safe templates remain visible by design.</div>'}
+        <h3>Risk findings</h3>${findings.length ? `<ul class="object-list">${findings.map(finding => `<li><strong>${escapeHtml(finding.title)}</strong><small>${escapeHtml(finding.ruleId)} · ${escapeHtml(finding.status)} · ${escapeHtml(finding.confidence)}</small><p>${escapeHtml(finding.description)}</p></li>`).join('')}</ul>` : '<div class="empty-state compact">No AD CS risk finding for this template. Inventory without a finding is not a clean security verdict.</div>'}
         <h3>Evidence</h3>${csRenderEvidence(findings)}
       </section>
     </div>`;
 
-  for (const button of certificateServicesEls.templates.querySelectorAll('[data-cs-template]'))
-    button.addEventListener('click', () => { certificateServicesState.selectedTemplate = button.dataset.csTemplate; csRenderTemplates(); });
+  for (const button of container.querySelectorAll('[data-cs-template]'))
+    button.addEventListener('click', () => { certificateServicesState.selectedTemplate = button.dataset.csTemplate; csRenderTemplates(); csFocusDetail(csTemplateContainer()); });
+  csDiscloseDetail(container);
+  for (const row of container.querySelectorAll('[data-cs-template]')) if (row.dataset.csTemplate === focusedId) row.focus({ preventScroll: true });
 }
 
 function csRenderFindings() {
@@ -315,15 +405,11 @@ function csRenderFindings() {
 for (const button of certificateServicesEls.nav.querySelectorAll('[data-cs-section]'))
   button.addEventListener('click', () => csActivateSection(button.dataset.csSection));
 
-const certificateServicesTab = document.querySelector('.tab[data-tab="certificate-services"]');
-if (certificateServicesTab)
-  certificateServicesTab.addEventListener('click', () => loadCertificateServices());
-
-const snapshotObserver = new MutationObserver(() => {
-  if (certificateServicesState.analysisId !== state.analysisId) {
-    certificateServicesState.analysisId = null;
-    certificateServicesState.view = null;
-  }
+bindTabKeys(certificateServicesEls.nav, '[data-cs-section]');
+certificateServicesEls.search.addEventListener('input', () => {
+  certificateServicesState.detailOpen = false;
+  if (certificateServicesState.selectedSection === 'authorities') csRenderAuthorities();
+  else csRenderTemplates();
 });
-const snapshotIdElement = document.getElementById('snapshotId');
-if (snapshotIdElement) snapshotObserver.observe(snapshotIdElement, { childList: true, characterData: true, subtree: true });
+document.getElementById('retryCertificateServices').addEventListener('click', () => loadCertificateServices(true));
+if (uiState.section === 'certificate-services') void loadCertificateServices();

@@ -22,7 +22,7 @@ dotnet run --project src/DogfighterAD.Web/DogfighterAD.Web.csproj -c Release -- 
 
 ## Primary workflow: New assessment
 
-1. Open the local UI.
+1. Open the local UI and choose **Import / Assessment** in the sidebar.
 2. Enter a DC/domain target.
 3. Choose `audit-full` or `minimal`.
 4. Choose the current OS context or explicit username/password authentication.
@@ -31,7 +31,7 @@ dotnet run --project src/DogfighterAD.Web/DogfighterAD.Web.csproj -c Release -- 
 7. Watch collector progress and cancel if needed.
 8. DogfighterAD writes the result to a private local assessment directory as a verified `.dogad` artifact.
 9. After collection succeeds, the same local host automatically runs the offline Rule Engine over that snapshot.
-10. The findings dashboard opens with severity summary, evidence, coverage and `NotVerified` explanations.
+10. **Overview** opens with server-authored posture, priorities, severity counts and verification gaps. Findings and Technical / Evidence remain separate sidebar sections.
 11. For `audit-full`, the **Certificate Services** tab also exposes collected AD CS inventory and AD CS findings.
 12. Download the `.dogad` or export the in-memory analysis as JSON/HTML.
 
@@ -47,7 +47,7 @@ The snapshot boundary remains explicit even though the UI automates the transiti
 
 The original offline workflow remains available:
 
-1. Choose an existing `.dogad`.
+1. Open **Import / Assessment** and choose an existing `.dogad`.
 2. Click **Analyze snapshot**.
 3. Review findings, coverage, missing evidence and Certificate Services inventory when present.
 4. Export JSON or HTML.
@@ -61,7 +61,7 @@ This path never reconnects to LDAP, SYSVOL or CA runtime services.
 - saved snapshot status and a `.dogad` download;
 - analysis completion state;
 - Critical/High/Medium/Low severity summary;
-- finding search and severity filters;
+- finding search, severity/status filters and filter reset;
 - finding description, risk and remediation;
 - affected AD objects;
 - evidence paths, observed values and collector/source provenance;
@@ -70,17 +70,37 @@ This path never reconnects to LDAP, SYSVOL or CA runtime services.
 - JSON and HTML report export;
 - Certificate Services inventory and AD CS-specific findings.
 
+## Workspace navigation and presentation
+
+The fixed desktop sidebar separates **Overview**, **Findings**, **Certificate Services**, **Technical / Evidence**, and **Import / Assessment**. Only the active section is displayed. URLs use section hashes only; credentials, findings and targets are not written into URLs or browser storage.
+
+**Overview** uses the existing server presentation summary for posture and top priorities. There is no frontend risk score. Severity counts are a display of the existing findings; verification errors remain explicitly distinguished in the coverage summary. If presentation loading fails, the UI retains the original technical report and offers Retry rather than inventing a customer-facing interpretation.
+
+**Findings** uses a compact severity/status/title/object/reason list and a selected-finding inspector. **Overview / Technical** remains available inside the inspector. The original affected-object list, evidence, provenance, confidence, validation status and fingerprint remain accessible. Conditions, evidence-source details and supporting/context evidence use progressive disclosure.
+
+**Technical / Evidence** contains Collection coverage, Not verified / Errors, and Finding evidence. The evidence index is rendered only on demand and paginated at 100 rows; search still covers all attached evidence. The index links back to the exact finding in Technical mode, without evaluating any rules.
+
+**Certificate Services** keeps inventory and selected-object details separate. Large certificate, ACL and raw evidence blocks are expandable, not removed. Related-finding actions select the matching fingerprint rather than merely switching to the Findings section.
+
+At 1000 CSS pixels and below, finding and PKI list/detail views become a two-step navigation with a Back button. At 760 pixels and below, the sidebar becomes a keyboard-accessible drawer. Tab groups support arrow keys and Home/End; active navigation and visible focus remain explicit.
+
+Only static Web UI files and documentation were changed for this redesign. Existing collector, Rule Engine, serializer, API endpoints and C# presentation mappers are unchanged. See [UI redesign and validation (Russian)](UI_REDESIGN_RU.md) for the precise test scope and limitations.
+
 ## Certificate Services UI — 0.3.2
 
 The **Certificate Services** tab is backed by the normalized `CertificateServicesSnapshot` stored in the same `.dogad` that the Rule Engine analyzes. It does not run a second AD CS scanner and does not call external tooling.
 
-The area contains three views:
+The area contains four views:
 
 ### CAs
 
 Shows collected Enterprise CA directory objects, DNS name, CA certificate metadata/fingerprints, published templates, directory DACL/ACEs, associated `ADCS.CA.*` findings and evidence. NTAuth status is derived only from collected directory certificate fingerprints: a matching CA certificate in collected `NTAuthCertificates` is shown as a directory trust match, not proof of live authentication behavior.
 
-### Templates
+### Risky templates
+
+A filtered inventory containing templates associated with already-emitted `ADCS.*` findings. This is a presentation filter, not a second rule evaluation. It does not claim that other templates are safe. Severity, status and explanations retain the report/presentation values.
+
+### All templates
 
 Shows **all collected templates**, including templates with no findings. Detail includes publication, EKUs/application policies, template OID/version, subject-name flags, enrollment flags, authorized-signature requirement, validity/overlap periods, direct DACL/ACEs, enrollment/auto-enrollment trustees, `ADCS.TEMPLATE.*` findings and evidence.
 

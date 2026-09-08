@@ -1,148 +1,53 @@
-.cs-intro {
-  display: grid;
-  gap: .75rem;
-  margin-bottom: 1rem;
+/* PKI inventory shares the workspace tokens and components. */
+.cs-intro { margin-bottom: 14px; }
+.cs-intro > p { margin: 8px 0 18px; }
+.cs-intro .summary-grid { margin-bottom: 10px; }
+.cs-intro .summary-card { background: var(--surface-alt); padding: 12px; }
+.cs-intro .summary-card > strong { font-size: 23px; }
+.cs-section-nav { margin-top: 8px; }
+.cs-master-detail { display: grid; grid-template-columns: minmax(240px, .7fr) minmax(0, 1.6fr); gap: 14px; align-items: start; }
+.cs-list { max-height: calc(100vh - 235px); overflow: auto; padding: 0; }
+.cs-row { display: block; width: 100%; text-align: left; border: 0; border-left: 3px solid transparent; border-bottom: 1px solid var(--line); border-radius: 0; background: var(--surface); color: var(--text); padding: 13px 14px; font-size: 12px; font-weight: 400; }
+.cs-row:hover { background: var(--surface-alt); }
+.cs-row.selected { background: var(--selected); border-left-color: var(--accent); }
+.cs-row:focus-visible { outline-offset: -3px; }
+.cs-row > strong { font-size: 13px; display: block; font-weight: 600; overflow-wrap: anywhere; }
+.cs-row > small { display: block; font-size: 11px; margin: 4px 0 8px; overflow-wrap: anywhere; }
+.cs-detail { padding: 20px; max-height: calc(100vh - 120px); overflow: auto; scroll-margin-top: 16px; }
+.cs-detail .detail-heading h2 { font-size: 20px; margin: 2px 0 6px; overflow-wrap: anywhere; }
+.cs-detail p { font-size: 12px; color: var(--muted); line-height: 1.7; }
+.cs-detail small { display: block; }
+.cs-detail h3 { margin: 16px 0 6px; }
+.cs-detail .customer-object-summary { padding: 0 0 14px; background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; margin: 20px 0 14px; }
+.cs-detail .customer-object-summary h3 { font-size: 15px; margin-top: 3px; }
+.cs-detail .key-evidence-list { margin-top: 8px; }
+.cs-detail table { font-size: 11px; }
+.cs-detail td { min-width: 110px; }
+.cs-detail .detail-meta { display: grid; gap: 9px; }
+.cs-block { display: block; overflow-wrap: anywhere; padding: 10px; margin-top: 10px; background: var(--surface-alt); border: 1px solid var(--line); border-radius: 3px; white-space: normal; }
+.cs-kv { display: grid; grid-template-columns: minmax(120px, .65fr) minmax(0, 1fr); gap: 10px 18px; font-size: 12px; align-items: start; }
+.cs-kv > span { color: var(--muted); }
+.cs-kv > strong { font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.cs-tags, .cs-finding-badges { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.cs-tags code { display: inline-block; padding: 2px 5px; border: 1px solid var(--line); background: var(--surface-alt); border-radius: 3px; font-size: 10px; }
+.cs-clean { font-size: 10px; color: var(--muted); }
+.cs-ok { color: #40574c; }
+.cs-warn { color: #846111; }
+.cs-coverage { border-top: 1px solid var(--line); padding-top: 10px; }
+.cs-coverage > summary { font-size: 11px; color: var(--muted); cursor: pointer; }
+.cs-coverage[open] > summary { margin-bottom: 12px; }
+#certificateFindings > .panel { padding: 18px 20px; }
+@media (max-width: 1000px) {
+  .cs-master-detail { grid-template-columns: 1fr; }
+  .cs-master-detail:not(.detail-open) > .cs-detail { display: none; }
+  .cs-master-detail.detail-open > .cs-list { display: none; }
+  .cs-list { max-height: none; }
+  .cs-detail { max-height: none; }
 }
-
-.cs-section-nav {
-  display: flex;
-  gap: .5rem;
-  margin: 1rem 0;
-  flex-wrap: wrap;
-}
-
-.cs-section-nav button {
-  min-width: 7rem;
-}
-
-.cs-section-nav button.active {
-  border-color: var(--accent, #7c8cff);
-  box-shadow: inset 0 0 0 1px var(--accent, #7c8cff);
-}
-
-.cs-master-detail {
-  display: grid;
-  grid-template-columns: minmax(15rem, .72fr) minmax(0, 2fr);
-  gap: 1rem;
-  align-items: start;
-}
-
-.cs-list {
-  padding: .5rem;
-  display: grid;
-  gap: .35rem;
-  max-height: 70vh;
-  overflow: auto;
-}
-
-.cs-row {
-  width: 100%;
-  text-align: left;
-  display: grid;
-  gap: .35rem;
-  padding: .8rem;
-  border-radius: .65rem;
-  background: transparent;
-}
-
-.cs-row.selected {
-  background: rgba(127, 140, 255, .1);
-  box-shadow: inset 0 0 0 1px rgba(127, 140, 255, .35);
-}
-
-.cs-row small,
-.cs-detail small {
-  display: block;
-}
-
-.cs-detail {
-  min-width: 0;
-}
-
-.cs-detail h3 {
-  margin-top: 1.4rem;
-}
-
-.cs-block {
-  display: block;
-  overflow-wrap: anywhere;
-  white-space: normal;
-  padding: .65rem;
-  margin-top: .5rem;
-}
-
-.cs-kv {
-  display: grid;
-  grid-template-columns: minmax(10rem, .45fr) minmax(0, 1fr);
-  gap: .55rem 1rem;
-  align-items: start;
-}
-
-.cs-kv > span {
-  color: var(--muted, #9ca3af);
-}
-
-.cs-tags,
-.cs-finding-badges {
-  display: flex;
-  gap: .35rem;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.cs-tags code {
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.cs-clean {
-  font-size: .75rem;
-  color: var(--muted, #9ca3af);
-}
-
-.cs-ok {
-  color: #4ade80;
-}
-
-.cs-warn {
-  color: #fbbf24;
-}
-
-.cs-coverage {
-  margin-top: .75rem;
-}
-
-.cs-coverage > summary {
-  cursor: pointer;
-  font-weight: 600;
-  margin-bottom: .65rem;
-}
-
-.empty-state.compact {
-  padding: .75rem;
-  min-height: auto;
-}
-
-#certificateServicesSummary {
-  margin-bottom: 0;
-}
-
-#certificateServicesCoverage {
-  margin-bottom: .5rem;
-}
-
-@media (max-width: 900px) {
-  .cs-master-detail {
-    grid-template-columns: 1fr;
-  }
-
-  .cs-list {
-    max-height: 18rem;
-  }
-}
-
 @media (max-width: 620px) {
-  .cs-kv {
-    grid-template-columns: 1fr;
-  }
+  .cs-detail { padding: 16px; }
+  .cs-kv { grid-template-columns: 1fr; gap: 5px; }
+  .cs-kv > span:not(:first-child) { margin-top: 8px; }
 }
+
+.cs-detail .customer-object-summary .detail-meta { display: flex; border: 0; padding: 5px 0; }
