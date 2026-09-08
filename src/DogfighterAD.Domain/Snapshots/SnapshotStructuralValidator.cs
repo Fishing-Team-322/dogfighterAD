@@ -95,6 +95,11 @@ public static class SnapshotStructuralValidator
             RequireList(environment.SupportedLdapVersions, "content.directoryEnvironment.supportedLdapVersions", violations);
         }
 
+        if (content.CertificateServices is { } certificateServices)
+        {
+            ValidateCertificateServices(certificateServices, violations);
+        }
+
         if (usersValid)
         {
             for (var index = 0; index < content.Users.Count; index++)
@@ -124,6 +129,68 @@ public static class SnapshotStructuralValidator
                 RequireList(computer.ServicePrincipalNames, $"content.computers[{index}].servicePrincipalNames", violations);
                 RequireList(computer.AllowedToDelegateTo, $"content.computers[{index}].allowedToDelegateTo", violations);
             }
+        }
+    }
+
+    private static void ValidateCertificateServices(
+        CertificateServicesSnapshot services,
+        ICollection<SnapshotInvariantViolation> violations)
+    {
+        var authoritiesValid = RequireList(
+            services.Authorities,
+            "content.certificateServices.authorities",
+            violations);
+        var templatesValid = RequireList(
+            services.Templates,
+            "content.certificateServices.templates",
+            violations);
+        RequireList(
+            services.Publications,
+            "content.certificateServices.publications",
+            violations);
+
+        if (authoritiesValid)
+        {
+            for (var index = 0; index < services.Authorities.Count; index++)
+            {
+                var authority = services.Authorities[index];
+                if (authority is not null)
+                {
+                    RequireList(
+                        authority.Certificates,
+                        $"content.certificateServices.authorities[{index}].certificates",
+                        violations);
+                }
+            }
+        }
+
+        if (templatesValid)
+        {
+            for (var index = 0; index < services.Templates.Count; index++)
+            {
+                var template = services.Templates[index];
+                if (template is null)
+                {
+                    continue;
+                }
+
+                RequireList(
+                    template.ExtendedKeyUsages,
+                    $"content.certificateServices.templates[{index}].extendedKeyUsages",
+                    violations);
+                RequireList(
+                    template.ApplicationPolicies,
+                    $"content.certificateServices.templates[{index}].applicationPolicies",
+                    violations);
+            }
+        }
+
+        if (services.Trust is { } trust)
+        {
+            RequireList(
+                trust.Certificates,
+                "content.certificateServices.trust.certificates",
+                violations);
         }
     }
 
