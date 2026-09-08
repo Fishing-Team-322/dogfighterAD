@@ -1,4 +1,5 @@
 using DogfighterAD.Domain.Analysis;
+using DogfighterAD.Domain.Findings;
 using DogfighterAD.Domain.Snapshots;
 
 namespace DogfighterAD.Application.Analysis;
@@ -40,7 +41,6 @@ internal sealed class AdcsLowPrivilegeIndex
 
         var objects = AnalysisSubjects.Objects(snapshot.Content).ToDictionary(item => item.Id);
         var groupSids = new Dictionary<AdObjectId, FactRead<string>>();
-        var userSids = new Dictionary<AdObjectId, FactRead<string>>();
 
         foreach (var domain in snapshot.Content.Domains)
         {
@@ -98,7 +98,6 @@ internal sealed class AdcsLowPrivilegeIndex
                 CollectionCapabilities.DirectoryUsers,
                 subject,
                 "user.userAccountControl");
-            userSids[user.Id] = sid;
 
             if (!sid.Known || string.IsNullOrWhiteSpace(sid.Value) || !uac.Known)
             {
