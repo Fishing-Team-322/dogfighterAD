@@ -19,6 +19,11 @@ internal static class SnapshotInventory
         CollectionCapabilities.GroupPolicyMetadata => snapshot.Content.GroupPolicyObjects.Count,
         CollectionCapabilities.GroupPolicyLinks => snapshot.Content.GroupPolicyLinks.Count,
         CollectionCapabilities.GroupPolicySysvol => snapshot.Content.GroupPolicyFiles.Count,
+        CollectionCapabilities.AdcsAuthorities => snapshot.Content.CertificateServices?.Authorities.Count ?? 0,
+        CollectionCapabilities.AdcsTemplates => snapshot.Content.CertificateServices?.Templates.Count ?? 0,
+        CollectionCapabilities.AdcsPublication => snapshot.Content.CertificateServices?.Publications.Count ?? 0,
+        CollectionCapabilities.AdcsAcls => snapshot.Content.CertificateServices?.SecurityDescriptors.Count ?? 0,
+        CollectionCapabilities.AdcsTrust => snapshot.Content.CertificateServices?.Trust is null ? 0 : 1,
         CollectionCapabilities.DirectorySecurityPolicy => snapshot.Observations
             .Where(f => f.CapabilityId == capability && f.Path == "policy.kind")
             .Select(f => f.SubjectId).Distinct(StringComparer.Ordinal).Count(),

@@ -32,7 +32,8 @@ dotnet run --project src/DogfighterAD.Web/DogfighterAD.Web.csproj -c Release -- 
 8. DogfighterAD writes the result to a private local assessment directory as a verified `.dogad` artifact.
 9. After collection succeeds, the same local host automatically runs the offline Rule Engine over that snapshot.
 10. The findings dashboard opens with severity summary, evidence, coverage and `NotVerified` explanations.
-11. Download the `.dogad` or export the in-memory analysis as JSON/HTML.
+11. For `audit-full`, the **Certificate Services** tab also exposes collected AD CS inventory and AD CS findings.
+12. Download the `.dogad` or export the in-memory analysis as JSON/HTML.
 
 The intended user experience is therefore:
 
@@ -40,7 +41,7 @@ The intended user experience is therefore:
 UI -> scan -> verified .dogad -> offline analyze -> findings
 ```
 
-The snapshot boundary remains explicit even though the UI automates the transitions. Collection results are not analyzed directly as an unverified transient object: the workflow writes and round-trips the `.dogad` before it is exposed as the saved assessment artifact.
+The snapshot boundary remains explicit even though the UI automates the transitions. Collection results are not treated as an unverified transient source of truth: the workflow writes and round-trips the `.dogad` before exposing the saved assessment artifact.
 
 ## Secondary workflow: Open existing snapshot
 
@@ -48,10 +49,10 @@ The original offline workflow remains available:
 
 1. Choose an existing `.dogad`.
 2. Click **Analyze snapshot**.
-3. Review findings, coverage and missing evidence.
+3. Review findings, coverage, missing evidence and Certificate Services inventory when present.
 4. Export JSON or HTML.
 
-This path never reconnects to LDAP or SYSVOL.
+This path never reconnects to LDAP, SYSVOL or CA runtime services.
 
 ## What the UI currently shows
 
@@ -66,7 +67,42 @@ This path never reconnects to LDAP or SYSVOL.
 - evidence paths, observed values and collector/source provenance;
 - capability coverage and collection issues;
 - explicit `NotVerified` / error evaluations;
-- JSON and HTML report export.
+- JSON and HTML report export;
+- Certificate Services inventory and AD CS-specific findings.
+
+## Certificate Services UI — 0.3.2
+
+The **Certificate Services** tab is backed by the normalized `CertificateServicesSnapshot` stored in the same `.dogad` that the Rule Engine analyzes. It does not run a second AD CS scanner and does not call external tooling.
+
+The area contains three views:
+
+### CAs
+
+Shows collected Enterprise CA directory objects, DNS name, CA certificate metadata/fingerprints, published templates, directory DACL/ACEs, associated `ADCS.CA.*` findings and evidence. NTAuth status is derived only from collected directory certificate fingerprints: a matching CA certificate in collected `NTAuthCertificates` is shown as a directory trust match, not proof of live authentication behavior.
+
+### Templates
+
+Shows **all collected templates**, including templates with no findings. Detail includes publication, EKUs/application policies, template OID/version, subject-name flags, enrollment flags, authorized-signature requirement, validity/overlap periods, direct DACL/ACEs, enrollment/auto-enrollment trustees, `ADCS.TEMPLATE.*` findings and evidence.
+
+### Findings
+
+Shows the AD CS subset of the normal offline report. It does not recompute risk in JavaScript; the browser joins normalized inventory with findings already emitted by the same Rule Engine used by CLI/offline analysis.
+
+If the collector successfully proves that no Enterprise CA exists, the five AD CS capability records are `NotApplicable` and the UI says that explicitly. A legacy snapshot or unavailable/incomplete AD CS collection is shown as unavailable/`NotVerified`, never as a clean zero-risk result.
+
+### Runtime boundary
+
+0.3.2 is deliberately directory-derived. The UI must not turn the following into inferred facts:
+
+- CA registry policy;
+- CA RPC/DCOM/service permissions;
+- `EDITF_ATTRIBUTESUBJECTALTNAME2` or other runtime CA policy;
+- web enrollment availability;
+- EPA/channel-binding/NTLM behavior;
+- issuance success or certificate exploitability;
+- complete Windows effective access / deny precedence.
+
+`ADCS.TEMPLATE.ESC1_CANDIDATE` therefore remains a **Potential** directory candidate when all implemented directory prerequisites are proven. It is not presented as a runtime-verified ESC1 vulnerability.
 
 ## Credential and local-data boundaries
 
@@ -95,8 +131,11 @@ The web assessment path composes the same production collectors used by the CLI:
 - memberships;
 - trusts;
 - ACLs;
+- AD CS / Certificate Services directory posture;
 - GPO metadata and links;
 - SYSVOL GPO collection.
+
+`CertificateServicesCollector` reads the Configuration NC only. It provides `adcs.authorities`, `adcs.templates`, `adcs.publication`, `adcs.acls`, and `adcs.trust`; it does not contact CA registry/RPC/web endpoints.
 
 Explicit credentials retain the existing security behavior: LDAP defaults to Negotiate, optional NTLM is LDAP-only compatibility mode, and SYSVOL uses portable Kerberos with the same credential. Explicit credentials require a DNS hostname target. LDAP signing/sealing remains the default when LDAPS is not selected.
 
@@ -105,8 +144,8 @@ Explicit credentials retain the existing security behavior: LDAP defaults to Neg
 - persisted recent-assessment/history browser;
 - retest/diff lifecycle and finding states;
 - accepted-risk/suppression workflow;
-- AD CS/certificate-template collection and `Certificate Services` UI;
+- runtime CA registry/RPC/web-enrollment collectors and runtime-dependent ESC checks;
 - graph/path analysis;
 - polished distributable packaging/live UI acceptance beyond source execution.
 
-AD CS and certificate templates are tracked as the dedicated 0.3.2 milestone in `ROADMAP.md`.
+The AD CS directory/UI slice is implemented in 0.3.2, but live MINILAB/GOAD AD CS acceptance is still a separate validation step. Synthetic fixtures and Windows/Ubuntu CI are not a substitute for that live-lab record.

@@ -217,7 +217,6 @@ public sealed class SystemLdapClientFactory : IReadOnlyLdapClientFactory
         }
     }
 
-
     private static void ObserveBackgroundFault(Task task)
     {
         _ = task.ContinueWith(
@@ -330,7 +329,10 @@ internal sealed class SystemLdapClient : IReadOnlyLdapClient
             "objectSid",
             "sIDHistory",
             "securityIdentifier",
-            "nTSecurityDescriptor"
+            "nTSecurityDescriptor",
+            "cACertificate",
+            "pKIExpirationPeriod",
+            "pKIOverlapPeriod"
         };
 
     private readonly LdapConnection _connection;

@@ -19,6 +19,9 @@ public sealed class LdapBinaryAttributeTransportTests
     [InlineData("securityIdentifier")]
     [InlineData("objectGUID")]
     [InlineData("nTSecurityDescriptor")]
+    [InlineData("cACertificate")]
+    [InlineData("pKIExpirationPeriod")]
+    [InlineData("pKIOverlapPeriod")]
     public void MapAttributeValues_KnownBinaryAttribute_PreservesWireBytes(string attributeName)
     {
         var attribute = new DirectoryAttribute(attributeName, BuiltinAdministratorsSid);

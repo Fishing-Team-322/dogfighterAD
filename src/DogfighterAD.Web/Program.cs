@@ -6,6 +6,7 @@ using DogfighterAD.Application.Analysis;
 using DogfighterAD.Application.Analysis.Rules;
 using DogfighterAD.Domain.Analysis;
 using DogfighterAD.Serialization;
+using DogfighterAD.Web;
 
 if (!UiSettings.TryParse(args, out var settings, out var settingsError))
 {
@@ -53,7 +54,7 @@ app.UseStaticFiles();
 app.MapGet("/api/status", () => Results.Json(new
 {
     product = "DogfighterAD",
-    uiVersion = "0.3.1",
+    uiVersion = "0.3.2",
     mode = "local-assessment",
     bind = url,
     maxSnapshotBytes = DogadFormat.DefaultMaxContainerBytes
@@ -108,11 +109,11 @@ app.MapPost("/api/analyze", async (HttpRequest request, UiAnalysisStore store, C
 {
     try
     {
-        var report = await UiAnalysisService
+        var analysis = await UiAnalysisService
             .AnalyzeAsync(request.Body, request.ContentLength, cancellationToken)
             .ConfigureAwait(false);
-        var analysisId = store.Add(report);
-        return Results.Json(new { analysisId, report }, jsonOptions);
+        var analysisId = store.Add(analysis.Report, analysis.CertificateServices);
+        return Results.Json(new { analysisId, report = analysis.Report }, jsonOptions);
     }
     catch (DogadArtifactException exception)
     {
@@ -131,6 +132,11 @@ app.MapPost("/api/analyze", async (HttpRequest request, UiAnalysisStore store, C
 app.MapGet("/api/analyses/{id:guid}", (Guid id, UiAnalysisStore store) =>
     store.TryGet(id, out var report)
         ? Results.Json(report, jsonOptions)
+        : Results.NotFound(new { error = "analysis-not-found" }));
+
+app.MapGet("/api/analyses/{id:guid}/certificate-services", (Guid id, UiAnalysisStore store) =>
+    store.TryGetCertificateServices(id, out var certificateServices)
+        ? Results.Json(certificateServices, jsonOptions)
         : Results.NotFound(new { error = "analysis-not-found" }));
 
 app.MapGet("/api/analyses/{id:guid}/json", (Guid id, UiAnalysisStore store) =>
@@ -217,9 +223,13 @@ internal sealed record UiSettings(int Port, bool OpenBrowser)
     }
 }
 
+internal sealed record UiAnalysisResult(
+    AnalysisReport Report,
+    UiCertificateServicesView CertificateServices);
+
 internal static class UiAnalysisService
 {
-    public static async Task<AnalysisReport> AnalyzeAsync(
+    public static async Task<UiAnalysisResult> AnalyzeAsync(
         Stream source,
         long? contentLength,
         CancellationToken cancellationToken)
@@ -274,7 +284,7 @@ internal static class UiAnalysisService
                 .ConfigureAwait(false);
 
             var engine = new RuleEngine(BuiltInRulePack.Create(), BuiltInRulePack.Id, BuiltInRulePack.Version);
-            return engine.Analyze(snapshot, new RuleEngineOptions
+            var report = engine.Analyze(snapshot, new RuleEngineOptions
             {
                 Policy = new AnalysisPolicy(),
                 MaxEvaluations = 2_000_000
@@ -282,6 +292,7 @@ internal static class UiAnalysisService
             {
                 InputArtifactSha256 = Convert.ToHexStringLower(hasher.GetHashAndReset())
             };
+            return new UiAnalysisResult(report, UiCertificateServicesView.FromSnapshot(snapshot));
         }
         finally
         {
@@ -295,19 +306,21 @@ internal sealed class UiAnalysisStore
 {
     private const int Capacity = 8;
     private readonly object gate = new();
-    private readonly Dictionary<Guid, AnalysisReport> reports = [];
+    private readonly Dictionary<Guid, StoredAnalysis> analyses = [];
     private readonly Queue<Guid> insertionOrder = [];
 
-    public Guid Add(AnalysisReport report)
+    public Guid Add(AnalysisReport report, UiCertificateServicesView? certificateServices = null)
     {
         ArgumentNullException.ThrowIfNull(report);
         lock (gate)
         {
-            while (reports.Count >= Capacity && insertionOrder.Count > 0)
-                reports.Remove(insertionOrder.Dequeue());
+            while (analyses.Count >= Capacity && insertionOrder.Count > 0)
+                analyses.Remove(insertionOrder.Dequeue());
 
             var id = Guid.NewGuid();
-            reports.Add(id, report);
+            analyses.Add(id, new StoredAnalysis(
+                report,
+                certificateServices ?? new UiCertificateServicesView { Available = false }));
             insertionOrder.Enqueue(id);
             return id;
         }
@@ -316,6 +329,34 @@ internal sealed class UiAnalysisStore
     public bool TryGet(Guid id, out AnalysisReport report)
     {
         lock (gate)
-            return reports.TryGetValue(id, out report!);
+        {
+            if (analyses.TryGetValue(id, out var stored))
+            {
+                report = stored.Report;
+                return true;
+            }
+
+            report = null!;
+            return false;
+        }
     }
+
+    public bool TryGetCertificateServices(Guid id, out UiCertificateServicesView certificateServices)
+    {
+        lock (gate)
+        {
+            if (analyses.TryGetValue(id, out var stored))
+            {
+                certificateServices = stored.CertificateServices;
+                return true;
+            }
+
+            certificateServices = null!;
+            return false;
+        }
+    }
+
+    private sealed record StoredAnalysis(
+        AnalysisReport Report,
+        UiCertificateServicesView CertificateServices);
 }

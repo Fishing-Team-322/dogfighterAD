@@ -77,7 +77,8 @@ public sealed class SnapshotFragmentMerger
                 .SelectMany(x => x.Content.Aces)
                 .OrderBy(x => x.TargetObjectId.Value)
                 .ThenBy(x => x.AceIndex)
-                .ToArray()
+                .ToArray(),
+            CertificateServices = MergeCertificateServices(fragments)
         };
     }
 
@@ -121,6 +122,46 @@ public sealed class SnapshotFragmentMerger
             SupportedLdapVersions = environment.SupportedLdapVersions
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(x => x, StringComparer.Ordinal)
+                .ToArray()
+        };
+    }
+
+    private static CertificateServicesSnapshot? MergeCertificateServices(
+        IReadOnlyList<SnapshotFragment> fragments)
+    {
+        var snapshots = fragments
+            .Select(x => x.Content.CertificateServices)
+            .Where(x => x is not null)
+            .Cast<CertificateServicesSnapshot>()
+            .ToArray();
+
+        if (snapshots.Length == 0)
+        {
+            return null;
+        }
+
+        if (snapshots.Length > 1)
+        {
+            throw MergeError(
+                "snapshot.fragment.duplicate-certificate-services",
+                "Multiple collector fragments produced CertificateServices. " +
+                "AD CS collection ownership must be resolved before snapshot assembly.");
+        }
+
+        var snapshot = snapshots[0];
+        return snapshot with
+        {
+            Authorities = MergeDirectoryObjects(snapshot.Authorities, "certificate-authority"),
+            Templates = MergeDirectoryObjects(snapshot.Templates, "certificate-template"),
+            Publications = snapshot.Publications
+                .Distinct()
+                .OrderBy(x => x.AuthorityId.Value)
+                .ThenBy(x => x.TemplateId.Value)
+                .ToArray(),
+            SecurityDescriptors = MergeSecurityDescriptors(snapshot.SecurityDescriptors),
+            Aces = snapshot.Aces
+                .OrderBy(x => x.TargetObjectId.Value)
+                .ThenBy(x => x.AceIndex)
                 .ToArray()
         };
     }

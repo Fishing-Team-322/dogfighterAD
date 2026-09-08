@@ -45,7 +45,9 @@ jobs:
           $requiredAssets = @(
             'wwwroot/index.html',
             'wwwroot/app.js',
-            'wwwroot/styles.css'
+            'wwwroot/styles.css',
+            'wwwroot/certificate-services.js',
+            'wwwroot/certificate-services.css'
           )
           foreach ($asset in $requiredAssets) {
             $path = Join-Path $webOutput $asset
@@ -82,12 +84,20 @@ jobs:
             if ($response.Content -notmatch '<title>DogfighterAD</title>') {
               throw 'Web UI root endpoint did not return the expected index page.'
             }
+            if ($response.Content -notmatch 'data-tab="certificate-services"') {
+              throw 'Web UI root endpoint is missing the Certificate Services workspace.'
+            }
           }
           finally {
             if (-not $ui.HasExited) {
               Stop-Process -Id $ui.Id -Force
             }
           }
+
+      - name: Web UI JavaScript syntax
+        run: |
+          node --check src/DogfighterAD.Web/wwwroot/app.js
+          node --check src/DogfighterAD.Web/wwwroot/certificate-services.js
 
       - name: Unit tests
         run: dotnet run --project tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj --configuration Release --no-build

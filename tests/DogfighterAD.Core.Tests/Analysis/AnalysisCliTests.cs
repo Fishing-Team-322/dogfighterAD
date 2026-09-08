@@ -67,7 +67,7 @@ public sealed class AnalysisCliTests
     {
         using var output = new StringWriter(); using var error = new StringWriter();
         var code = await CliApplication.RunAsync(["rules", "--format", "json"], "test", output, error, TestContext.Current.CancellationToken);
-        Assert.Equal(0, code); using var json = JsonDocument.Parse(output.ToString()); Assert.Equal(80, json.RootElement.GetArrayLength());
+        Assert.Equal(0, code); using var json = JsonDocument.Parse(output.ToString()); Assert.Equal(88, json.RootElement.GetArrayLength());
     }
     [Theory]
     [InlineData("--as-of", "2026-09-07")]

@@ -32,6 +32,11 @@ public static class CapabilityContractCatalog
             [CollectionCapabilities.GroupPolicyMetadata] = 1,
             [CollectionCapabilities.GroupPolicyLinks] = 1,
             [CollectionCapabilities.GroupPolicySysvol] = 3,
+            [CollectionCapabilities.AdcsAuthorities] = 1,
+            [CollectionCapabilities.AdcsTemplates] = 1,
+            [CollectionCapabilities.AdcsPublication] = 1,
+            [CollectionCapabilities.AdcsAcls] = 1,
+            [CollectionCapabilities.AdcsTrust] = 1,
             [CollectionCapabilities.AdcsDirectory] = 1
         };
 

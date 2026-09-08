@@ -161,7 +161,7 @@ internal sealed class UiAssessmentStore
                     InputArtifactSha256 = sha256
                 };
 
-                var analysisId = analyses.Add(report);
+                var analysisId = analyses.Add(report, UiCertificateServicesView.FromSnapshot(scan.Snapshot));
                 session.Complete(analysisId, report.SnapshotId);
             }
             catch (OperationCanceledException) when (session.CancellationToken.IsCancellationRequested)
@@ -507,6 +507,7 @@ internal static class UiCollectionComposition
             new GroupMembershipCollector(ldapFactory),
             new TrustCollector(ldapFactory),
             new AclCollector(ldapFactory),
+            new CertificateServicesCollector(ldapFactory),
             new GpoMetadataCollector(ldapFactory),
             new GpoLinkCollector(ldapFactory),
             new GpoSysvolCollector(sysvolFactory, sysvolOptions)

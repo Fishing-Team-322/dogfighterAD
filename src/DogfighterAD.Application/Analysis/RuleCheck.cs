@@ -68,10 +68,34 @@ public sealed class RuleCheck
 
 public static class AnalysisSubjects
 {
-    public static ObjectReference For(AdDirectoryObject item) => new(
-        item switch { AdUser => "user", AdComputer => "computer", AdGroup => "group", AdDomain => "domain",
-            AdGroupPolicyObject => "gpo", AdOrganizationalUnit => "ou", _ => "directory-object" },
-        $"ad-object:{item.Id}", item.DistinguishedName, item.Name);
+    public static ObjectReference For(AdDirectoryObject item) => item switch
+    {
+        CertificateAuthority authority => new(
+            "certificate-authority",
+            $"adcs-ca:{authority.Id}",
+            authority.DistinguishedName,
+            authority.Name),
+        CertificateTemplate template => new(
+            "certificate-template",
+            $"adcs-template:{template.Id}",
+            template.DistinguishedName,
+            template.DisplayName ?? template.Name),
+        _ => new(
+            item switch
+            {
+                AdUser => "user",
+                AdComputer => "computer",
+                AdGroup => "group",
+                AdDomain => "domain",
+                AdGroupPolicyObject => "gpo",
+                AdOrganizationalUnit => "ou",
+                _ => "directory-object"
+            },
+            $"ad-object:{item.Id}",
+            item.DistinguishedName,
+            item.Name)
+    };
+
     public static IEnumerable<AdDirectoryObject> Objects(SnapshotContent content) =>
         content.Domains.Cast<AdDirectoryObject>().Concat(content.Users).Concat(content.Computers)
             .Concat(content.Groups).Concat(content.OrganizationalUnits).Concat(content.GroupPolicyObjects)

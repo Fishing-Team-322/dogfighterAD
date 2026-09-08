@@ -15,6 +15,18 @@ public static class CollectionCapabilities
     public const string GroupPolicyMetadata = "gpo.metadata";
     public const string GroupPolicyLinks = "gpo.links";
     public const string GroupPolicySysvol = "gpo.sysvol";
+
+    // AD CS 0.3.2 deliberately uses narrow contracts so offline rules can distinguish exactly which
+    // directory evidence exists. Runtime CA policy, RPC and web-enrollment posture will use separate
+    // future capability IDs rather than overloading these directory-derived contracts.
+    public const string AdcsAuthorities = "adcs.authorities";
+    public const string AdcsTemplates = "adcs.templates";
+    public const string AdcsPublication = "adcs.publication";
+    public const string AdcsAcls = "adcs.acls";
+    public const string AdcsTrust = "adcs.trust";
+
+    // Retained as a legacy identifier so older custom profiles/code that referenced the pre-0.3.2
+    // placeholder continue to deserialize. Built-in profiles and new rules do not request it.
     public const string AdcsDirectory = "adcs.directory";
 }
 
