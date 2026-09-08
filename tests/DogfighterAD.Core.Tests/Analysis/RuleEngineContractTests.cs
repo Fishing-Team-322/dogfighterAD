@@ -15,13 +15,13 @@ public sealed class RuleEngineContractTests
 {
     private const string Rule = "AD.USER.PREAUTH_DISABLED";
     [Fact]
-    public void CatalogContainsEightyTwoUniqueDocumentedExecutableRules()
+    public void CatalogContainsEightyEightUniqueDocumentedExecutableRules()
     {
-        var pack = BuiltInRulePack.Create(); Assert.Equal(82, pack.Count);
-        Assert.Equal(82, pack.Select(r => r.Metadata.Id).Distinct(StringComparer.Ordinal).Count());
+        var pack = BuiltInRulePack.Create(); Assert.Equal(88, pack.Count);
+        Assert.Equal(88, pack.Select(r => r.Metadata.Id).Distinct(StringComparer.Ordinal).Count());
         Assert.All(pack, r => { Assert.NotEmpty(r.Metadata.RequiredCapabilities); Assert.NotEmpty(r.Metadata.RequiredFields); Assert.NotEmpty(r.Metadata.References); });
         var report = new RuleEngine(pack).Analyze(new AnalysisFixture().Build(), cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(82, report.Rules.Count); Assert.DoesNotContain(report.Evaluations, e => e.Outcome == RuleOutcome.Error);
+        Assert.Equal(88, report.Rules.Count); Assert.DoesNotContain(report.Evaluations, e => e.Outcome == RuleOutcome.Error);
         Assert.Empty(report.Findings); Assert.Equal(AnalysisCompletion.Partial, report.Completion);
     }
     [Theory]
