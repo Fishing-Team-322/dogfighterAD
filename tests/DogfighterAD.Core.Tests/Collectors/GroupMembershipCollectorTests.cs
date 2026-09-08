@@ -67,8 +67,8 @@ public sealed class GroupMembershipCollectorTests
 
         var coverage = Assert.Single(result.Fragment.Coverage);
         Assert.Equal(CollectionCapabilities.DirectoryMemberships, coverage.CapabilityId);
+        Assert.Equal(CapabilityContractCatalog.GetCurrentVersion(CollectionCapabilities.DirectoryMemberships), coverage.ContractVersion);
         Assert.Equal(CapabilityStatus.Complete, coverage.Status);
-        Assert.Equal(1, coverage.ContractVersion);
         Assert.Empty(coverage.Issues);
 
         var memberships = result.Fragment.Content.GroupMemberships;
@@ -118,7 +118,7 @@ public sealed class GroupMembershipCollectorTests
                 GroupMemberEntry(DomainComputersId, DomainComputersDn),
                 GroupMemberEntry(AuditGroupId, AuditGroupDn, missingDn)
             ],
-            baseResponses: new Dictionary<string, LdapSearchResult>(StringComparer.OrdinalIgnoreCase));
+            baseSearchResponses: []);
 
         var collector = new GroupMembershipCollector(
             new FakeLdapClientFactory(client),
@@ -130,250 +130,243 @@ public sealed class GroupMembershipCollectorTests
 
         var coverage = Assert.Single(result.Fragment.Coverage);
         Assert.Equal(CapabilityStatus.Partial, coverage.Status);
-        Assert.Contains(coverage.Issues, issue =>
-            issue.Code == "collection.memberships.member-unresolved");
-        Assert.Equal(1, client.BaseSearchCount);
+        Assert.Contains(coverage.Issues, issue => issue.Code == CollectionIssueCode.UnresolvedReference);
     }
 
-    private static CollectionContext CreateContext() =>
-        new(
-            Guid.Parse("acc4351a-7d6e-4611-a211-8305f76ac66a"),
-            "dc01.mini.lab",
-            new HashSet<string>(StringComparer.Ordinal)
-            {
-                CollectionCapabilities.DirectoryMemberships
-            },
-            new SnapshotFragment
-            {
-                Content = new SnapshotContent
+    [Fact]
+    public async Task CollectAsync_BaseLookupResolvesMemberOutsideSupportingQuery()
+    {
+        const string movedUserDn = "CN=Moved,OU=Legacy,DC=mini,DC=lab";
+        var movedUserId = new AdObjectId(Guid.Parse("77777777-7777-7777-7777-777777777777"));
+        var client = new MembershipFakeClient(
+            supportingEntries: [],
+            groupEntries:
+            [
+                GroupMemberEntry(DomainUsersId, DomainUsersDn),
+                GroupMemberEntry(DomainComputersId, DomainComputersDn),
+                GroupMemberEntry(AuditGroupId, AuditGroupDn, movedUserDn)
+            ],
+            baseSearchResponses:
+            [
+                new LdapSearchResult
                 {
-                    DirectoryEnvironment = new DirectoryEnvironment
-                    {
-                        DnsHostName = "dc01.mini.lab",
-                        DefaultNamingContext = "DC=mini,DC=lab",
-                        ConfigurationNamingContext = "CN=Configuration,DC=mini,DC=lab",
-                        SchemaNamingContext = "CN=Schema,CN=Configuration,DC=mini,DC=lab",
-                        RootDomainNamingContext = "DC=mini,DC=lab"
-                    },
-                    Users =
+                    Entries =
                     [
-                        new AdUser
+                        new LdapEntry
                         {
-                            Id = AliceId,
-                            DistinguishedName = AliceDn,
-                            Sid = "S-1-5-21-1-2-3-1101",
-                            SamAccountName = "alice",
-                            UserAccountControl = 512,
-                            PrimaryGroupId = 513
+                            DistinguishedName = movedUserDn,
+                            Attributes = new Dictionary<string, IReadOnlyList<LdapValue>>(StringComparer.OrdinalIgnoreCase)
+                            {
+                                ["objectGUID"] = [LdapValue.FromBytes(movedUserId.Value.ToByteArray())],
+                                ["objectSid"] = [LdapValue.FromBytes(CreateSidBytes(21, 1, 2, 3, 2100))],
+                                ["objectClass"] = [LdapValue.FromString("top"), LdapValue.FromString("person"), LdapValue.FromString("user")]
+                            }
                         }
-                    ],
-                    Computers =
-                    [
-                        new AdComputer
-                        {
-                            Id = WorkstationId,
-                            DistinguishedName = WorkstationDn,
-                            Sid = "S-1-5-21-1-2-3-3101",
-                            SamAccountName = "WS01$",
-                            UserAccountControl = 4096
-                        }
-                    ],
-                    Groups =
-                    [
-                        Group(DomainUsersId, DomainUsersDn, "S-1-5-21-1-2-3-513", "Domain Users"),
-                        Group(DomainComputersId, DomainComputersDn, "S-1-5-21-1-2-3-515", "Domain Computers"),
-                        Group(AuditGroupId, AuditGroupDn, "S-1-5-21-1-2-3-2101", "Audit Team")
                     ]
                 }
-            });
+            ]);
 
-    private static AdGroup Group(
-        AdObjectId id,
-        string dn,
-        string sid,
-        string name) =>
-        new()
+        var collector = new GroupMembershipCollector(
+            new FakeLdapClientFactory(client),
+            new FixedTimeProvider(FixedNow));
+
+        var result = await collector.CollectAsync(CreateContext(), CancellationToken.None);
+
+        Assert.Equal(1, client.BaseSearchCount);
+        Assert.Contains(result.Fragment.Content.GroupMemberships, item =>
+            item.GroupId == AuditGroupId &&
+            item.MemberId == movedUserId &&
+            item.Source == MembershipSource.Explicit);
+    }
+
+    [Fact]
+    public async Task CollectAsync_BaseLookupFails_MakesCoveragePartial()
+    {
+        const string missingDn = "CN=Missing,OU=Legacy,DC=mini,DC=lab";
+        var client = new MembershipFakeClient(
+            supportingEntries: [],
+            groupEntries:
+            [
+                GroupMemberEntry(DomainUsersId, DomainUsersDn),
+                GroupMemberEntry(DomainComputersId, DomainComputersDn),
+                GroupMemberEntry(AuditGroupId, AuditGroupDn, missingDn)
+            ],
+            baseSearchResponses: [new LdapSearchResult()]);
+
+        var collector = new GroupMembershipCollector(
+            new FakeLdapClientFactory(client),
+            new FixedTimeProvider(FixedNow));
+
+        var result = await collector.CollectAsync(CreateContext(), CancellationToken.None);
+
+        Assert.Equal(1, client.BaseSearchCount);
+        var coverage = Assert.Single(result.Fragment.Coverage);
+        Assert.Equal(CapabilityStatus.Partial, coverage.Status);
+        Assert.Contains(coverage.Issues, issue => issue.Code == CollectionIssueCode.UnresolvedReference);
+    }
+
+    [Fact]
+    public async Task CollectAsync_UnexpectedFailure_ReturnsFailedCoverage()
+    {
+        var client = new MembershipFakeClient(
+            supportingEntries: [],
+            groupEntries: [],
+            failure: new LdapTransportException(LdapFailureKind.Protocol, "boom"));
+
+        var collector = new GroupMembershipCollector(
+            new FakeLdapClientFactory(client),
+            new FixedTimeProvider(FixedNow));
+
+        var result = await collector.CollectAsync(CreateContext(), CancellationToken.None);
+
+        var coverage = Assert.Single(result.Fragment.Coverage);
+        Assert.Equal(CapabilityStatus.Failed, coverage.Status);
+        Assert.Contains(coverage.Issues, issue => issue.Code == CollectionIssueCode.ProtocolError);
+    }
+
+    private static CollectionContext CreateContext() => new()
+    {
+        InitialTarget = "dc01.mini.lab",
+        RequestedCapabilities = [CollectionCapabilities.DirectoryMemberships],
+        Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            Id = id,
-            DistinguishedName = dn,
-            Sid = sid,
-            Name = name,
-            SamAccountName = name,
-            GroupType = -2147483646
-        };
+            [CollectionMetadataKeys.DefaultNamingContext] = "DC=mini,DC=lab"
+        }
+    };
 
-    private static LdapSearchEntry PrincipalEntry(
+    private static LdapEntry PrincipalEntry(
         AdObjectId id,
         string dn,
         string sid,
         int primaryGroupId,
-        string mostSpecificClass) =>
+        string objectClass) =>
         new()
         {
             DistinguishedName = dn,
-            Attributes = Attributes(
-                ("objectClass", Text("top", "person", "organizationalPerson", "user", mostSpecificClass)),
-                ("objectGUID", Binary(id.Value.ToByteArray())),
-                ("objectSid", Binary(CreateSidBytes(sid))),
-                ("primaryGroupID", Text(primaryGroupId.ToString(CultureInfo.InvariantCulture))))
+            Attributes = new Dictionary<string, IReadOnlyList<LdapValue>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["objectGUID"] = [LdapValue.FromBytes(id.Value.ToByteArray())],
+                ["objectSid"] = [LdapValue.FromBytes(CreateSidBytes(ParseSidSubAuthorities(sid)))],
+                ["primaryGroupID"] = [LdapValue.FromString(primaryGroupId.ToString(CultureInfo.InvariantCulture))],
+                ["objectClass"] = [LdapValue.FromString("top"), LdapValue.FromString(objectClass)]
+            }
         };
 
-    private static LdapSearchEntry ForeignSecurityPrincipalEntry() =>
+    private static LdapEntry ForeignSecurityPrincipalEntry() =>
         new()
         {
             DistinguishedName = FspDn,
-            Attributes = Attributes(
-                ("objectClass", Text("top", "foreignSecurityPrincipal")),
-                ("objectGUID", Binary(FspId.Value.ToByteArray())),
-                ("objectSid", Binary(CreateSidBytes("S-1-5-21-9-9-9-1001"))),
-                ("name", Text("S-1-5-21-9-9-9-1001")))
+            Attributes = new Dictionary<string, IReadOnlyList<LdapValue>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["objectGUID"] = [LdapValue.FromBytes(FspId.Value.ToByteArray())],
+                ["objectSid"] = [LdapValue.FromBytes(CreateSidBytes(21, 9, 9, 9, 1001))],
+                ["objectClass"] = [LdapValue.FromString("top"), LdapValue.FromString("foreignSecurityPrincipal")]
+            }
         };
 
-    private static LdapSearchEntry GroupMemberEntry(
+    private static LdapEntry GroupMemberEntry(
         AdObjectId id,
         string dn,
-        params string[] members)
-    {
-        var attributes = new List<(string Name, IReadOnlyList<LdapAttributeValue> Values)>
-        {
-            ("objectGUID", Binary(id.Value.ToByteArray()))
-        };
-
-        if (members.Length > 0)
-        {
-            attributes.Add(("member", Text(members)));
-        }
-
-        return new LdapSearchEntry
+        params string[] members) =>
+        new()
         {
             DistinguishedName = dn,
-            Attributes = Attributes(attributes.ToArray())
+            Attributes = new Dictionary<string, IReadOnlyList<LdapValue>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["objectGUID"] = [LdapValue.FromBytes(id.Value.ToByteArray())],
+                ["member"] = members.Select(LdapValue.FromString).ToArray()
+            }
         };
-    }
 
-    private static IReadOnlyDictionary<string, IReadOnlyList<LdapAttributeValue>> Attributes(
-        params (string Name, IReadOnlyList<LdapAttributeValue> Values)[] attributes) =>
-        attributes.ToDictionary(
-            item => item.Name,
-            item => item.Values,
-            StringComparer.OrdinalIgnoreCase);
-
-    private static IReadOnlyList<LdapAttributeValue> Text(params string[] values) =>
-        values.Select(LdapAttributeValue.FromText).ToArray();
-
-    private static IReadOnlyList<LdapAttributeValue> Binary(params byte[][] values) =>
-        values.Select(LdapAttributeValue.FromBytes).ToArray();
-
-    private static byte[] CreateSidBytes(string sid)
+    private static byte[] CreateSidBytes(params uint[] subAuthorities)
     {
-        var parts = sid.Split('-');
-        var revision = byte.Parse(parts[1], CultureInfo.InvariantCulture);
-        var authority = ulong.Parse(parts[2], CultureInfo.InvariantCulture);
-        var subAuthorities = parts.Skip(3)
-            .Select(part => uint.Parse(part, CultureInfo.InvariantCulture))
-            .ToArray();
-
-        var result = new byte[8 + (subAuthorities.Length * 4)];
-        result[0] = revision;
-        result[1] = checked((byte)subAuthorities.Length);
-
-        for (var index = 0; index < 6; index++)
-        {
-            result[7 - index] = (byte)(authority >> (index * 8));
-        }
+        var bytes = new byte[8 + (subAuthorities.Length * 4)];
+        bytes[0] = 1;
+        bytes[1] = checked((byte)subAuthorities.Length);
+        bytes[7] = 5;
 
         for (var index = 0; index < subAuthorities.Length; index++)
         {
-            var value = subAuthorities[index];
             var offset = 8 + (index * 4);
-            result[offset] = (byte)value;
-            result[offset + 1] = (byte)(value >> 8);
-            result[offset + 2] = (byte)(value >> 16);
-            result[offset + 3] = (byte)(value >> 24);
+            var value = subAuthorities[index];
+            bytes[offset] = (byte)(value & 0xFF);
+            bytes[offset + 1] = (byte)((value >> 8) & 0xFF);
+            bytes[offset + 2] = (byte)((value >> 16) & 0xFF);
+            bytes[offset + 3] = (byte)((value >> 24) & 0xFF);
         }
 
-        return result;
+        return bytes;
     }
 
-    private sealed class FakeLdapClientFactory : IReadOnlyLdapClientFactory
+    private static uint[] ParseSidSubAuthorities(string sid)
     {
-        private readonly IReadOnlyLdapClient _client;
-
-        public FakeLdapClientFactory(IReadOnlyLdapClient client)
-        {
-            _client = client;
-        }
-
-        public ValueTask<IReadOnlyLdapClient> CreateAsync(
-            string target,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(_client);
-        }
+        var parts = sid.Split('-');
+        return parts.Skip(3).Select(part => uint.Parse(part, CultureInfo.InvariantCulture)).ToArray();
     }
 
-    private sealed class MembershipFakeClient : IReadOnlyLdapClient
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
-        private readonly IReadOnlyList<LdapSearchEntry> _supportingEntries;
-        private readonly IReadOnlyList<LdapSearchEntry> _groupEntries;
-        private readonly IReadOnlyDictionary<string, LdapSearchResult> _baseResponses;
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    private sealed class MembershipFakeClient : ILdapClient
+    {
+        private readonly IReadOnlyList<LdapEntry> _supportingEntries;
+        private readonly IReadOnlyList<LdapEntry> _groupEntries;
+        private readonly Queue<LdapSearchResult> _baseSearchResponses;
+        private readonly Exception? _failure;
 
         public MembershipFakeClient(
-            IReadOnlyList<LdapSearchEntry> supportingEntries,
-            IReadOnlyList<LdapSearchEntry> groupEntries,
-            IReadOnlyDictionary<string, LdapSearchResult>? baseResponses = null)
+            IReadOnlyList<LdapEntry> supportingEntries,
+            IReadOnlyList<LdapEntry> groupEntries,
+            IReadOnlyList<LdapSearchResult>? baseSearchResponses = null,
+            Exception? failure = null)
         {
             _supportingEntries = supportingEntries;
             _groupEntries = groupEntries;
-            _baseResponses = baseResponses ??
-                new Dictionary<string, LdapSearchResult>(StringComparer.OrdinalIgnoreCase);
+            _baseSearchResponses = new Queue<LdapSearchResult>(baseSearchResponses ?? []);
+            _failure = failure;
         }
 
         public List<LdapSearchRequest> StreamingRequests { get; } = [];
         public int BaseSearchCount { get; private set; }
 
-        public Task<LdapSearchResult> SearchAsync(
-            LdapSearchRequest request,
-            CancellationToken cancellationToken)
+        public Task<LdapSearchResult> SearchAsync(LdapSearchRequest request, CancellationToken cancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            BaseSearchCount++;
-            return Task.FromResult(
-                _baseResponses.TryGetValue(request.BaseDn, out var response)
-                    ? response
-                    : new LdapSearchResult([]));
+            if (_failure is not null)
+            {
+                throw _failure;
+            }
+
+            if (request.Scope == LdapSearchScope.Base)
+            {
+                BaseSearchCount++;
+                return Task.FromResult(_baseSearchResponses.Count > 0
+                    ? _baseSearchResponses.Dequeue()
+                    : new LdapSearchResult());
+            }
+
+            throw new InvalidOperationException("Unexpected non-streaming LDAP request in membership test.");
         }
 
-        public async IAsyncEnumerable<LdapSearchEntry> SearchEntriesAsync(
+        public async IAsyncEnumerable<LdapSearchPage> SearchPagesAsync(
             LdapSearchRequest request,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             StreamingRequests.Add(request);
-            var source = request.Filter.Contains("primaryGroupID", StringComparison.Ordinal)
-                ? _supportingEntries
-                : _groupEntries;
-
-            foreach (var entry in source)
+            if (_failure is not null)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                yield return entry;
-                await Task.Yield();
+                throw _failure;
             }
+
+            var entries = request.Filter.Contains("objectCategory=group", StringComparison.OrdinalIgnoreCase)
+                ? _groupEntries
+                : _supportingEntries;
+
+            await Task.Yield();
+            yield return new LdapSearchPage { Entries = entries };
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-    }
-
-    private sealed class FixedTimeProvider : TimeProvider
-    {
-        private readonly DateTimeOffset _utcNow;
-
-        public FixedTimeProvider(DateTimeOffset utcNow)
-        {
-            _utcNow = utcNow;
-        }
-
-        public override DateTimeOffset GetUtcNow() => _utcNow;
     }
 }
