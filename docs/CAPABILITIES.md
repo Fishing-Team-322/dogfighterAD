@@ -1,6 +1,6 @@
 # Capability contracts
 
-> **Rule Engine 0.2.0 update:** see [RULE_ENGINE.md](RULE_ENGINE.md) for the implemented offline engine, 80 rules, expanded collection contracts, schema-2 compatibility and exact CLI/verification semantics. Historical checkpoints below are retained as history.
+> **0.3.2 update:** the current built-in pack is `dogfighterad.core/1.2.0` with 88 rules. AD CS directory posture is implemented through five narrow v1 contracts: `adcs.authorities`, `adcs.templates`, `adcs.publication`, `adcs.acls`, and `adcs.trust`. The older `adcs.directory` identifier is retained only for compatibility and is not requested by built-in profiles or current AD CS rules.
 
 Capability contracts define what data a snapshot is guaranteed to contain when a coverage record is marked `Complete` for a given contract version.
 
@@ -17,13 +17,7 @@ This document is normative for built-in collectors. It must change together with
 
 ## Attribute-read proof extension (2026-09-08)
 
-Users/computers v2 and memberships v3 preserve prior positive observations and add
-optional, provenance-backed absence proofs. Complete inventory does not guarantee
-read access to every field. The exact proof gates and seven persisted fields are
-normatively defined in [RULE_ENGINE.md, Attribute absence proofs](RULE_ENGINE.md#attribute-absence-proofs-rule-pack-110).
-Missing proof remains unknown. Membership v3 accepts proven empty groups without
-inventing member edges. No snapshot schema bump is needed: all additions use existing
-ObservedFact records. Historical sections below describe earlier guarantees.
+Users/computers v2 and memberships v3 preserve prior positive observations and add optional, provenance-backed absence proofs. Complete inventory does not guarantee read access to every field. The exact proof gates and persisted proof fields are normatively defined in [RULE_ENGINE.md, Attribute absence proofs](RULE_ENGINE.md#attribute-absence-proofs-rule-pack-110). Missing proof remains unknown. Membership v3 accepts proven empty groups without inventing member edges. No snapshot schema bump is needed: all additions use existing `ObservedFact` records.
 
 ## Current built-in contracts
 
@@ -43,7 +37,7 @@ Owner: `ad.ldap.domain-metadata`
 
 Owner: `ad.ldap.directory-objects`
 
-`Complete` guarantees successful default-domain user enumeration and usable stable `objectGUID`, DN, SID, parseable `userAccountControl` and `primaryGroupID` for every retained user. The collector also requests/normalizes, when present, `sAMAccountName`, UPN, `adminCount`, `pwdLastSet`, `lastLogonTimestamp`, `accountExpires`, `msDS-SupportedEncryptionTypes`, SPNs, `sIDHistory`, `msDS-AllowedToDelegateTo` and timestamps.
+`Complete` guarantees successful default-domain user enumeration and usable stable `objectGUID`, DN, SID, parseable `userAccountControl` and `primaryGroupID` for every retained user. The collector also requests/normalizes, when present, `sAMAccountName`, UPN, `adminCount`, `pwdLastSet`, `lastLogonTimestamp`, `accountExpires`, `msDS-SupportedEncryptionTypes`, SPNs, `sIDHistory`, `msDS-AllowedToDelegateTo` and timestamps. v2 additionally permits conservative absence proofs for reviewed requested attributes; missing or contradictory proof remains unknown.
 
 AD FileTime sentinels retain explicit meaning: `pwdLastSet=0` becomes `PasswordMustChangeAtNextLogon=true`; `accountExpires=0` or `Int64.MaxValue` becomes `AccountNeverExpires=true`. Raw values remain evidence facts.
 
@@ -57,7 +51,7 @@ Owner: `ad.ldap.directory-objects`
 
 Owner: `ad.ldap.directory-objects`
 
-`Complete` guarantees successful default-domain computer enumeration and stable GUID/DN/SID identity plus parseable `userAccountControl`. Host/OS metadata, password/logon timestamps, encryption types, SPNs and constrained-delegation targets are retained when present.
+`Complete` guarantees successful default-domain computer enumeration and stable GUID/DN/SID identity plus parseable `userAccountControl`. Host/OS metadata, password/logon timestamps, encryption types, SPNs and constrained-delegation targets are retained when present. v2 follows the same conservative reviewed-attribute absence-proof model as users.
 
 ### `directory.ous` v1
 
@@ -65,13 +59,13 @@ Owner: `ad.ldap.directory-objects`
 
 `Complete` guarantees successful default-domain OU enumeration and stable GUID/DN identity. Name and timestamps are retained when present. ACL-derived protection semantics are intentionally outside this capability.
 
-### `directory.memberships` v1
+### `directory.memberships` v3
 
 Owner: `ad.ldap.group-memberships`
 
 Depends on complete `directory.core`, `directory.users`, `directory.groups` and `directory.computers` data.
 
-`Complete` guarantees direct `member` relationships, full AD ranged-member retrieval through terminal ranges, direct group-to-group edges, reconstructed primary-group edges, stable member identity resolution, supporting FSP/generic objects when required, and source observations. Transitive membership is deliberately not precomputed. Incomplete ranges or unresolved identities produce `Partial`.
+`Complete` guarantees direct `member` relationships, full AD ranged-member retrieval through terminal ranges, direct group-to-group edges, reconstructed primary-group edges, stable member identity resolution, supporting FSP/generic objects when required, and source observations. v2 added per-group `group.memberReadComplete` / `group.observedMemberCount` boundaries. v3 permits a missing `member` attribute to certify an empty direct-member set only when the reviewed absence proof is present and coherent. Transitive membership is deliberately not precomputed. Incomplete ranges, unresolved identities or invalid absence proof produce incomplete/unknown analysis rather than a negative membership assertion.
 
 ### `directory.trusts` v1
 
@@ -79,13 +73,13 @@ Owner: `ad.ldap.trusts`
 
 Depends on `directory.core` and `directory.domains`. `Complete` guarantees local `trustedDomain` enumeration with normalized source domain, `trustPartner`, parseable direction/type/attributes and target SID when available. Zero trusts can legitimately be complete. The remote side is not contacted or validated.
 
-### `directory.acls` v1
+### `directory.acls` v3
 
 Owner: `ad.ldap.acls`
 
-Depends on complete core/domain/users/groups/computers/OUs data. v1 covers the normalized default-domain root, users, groups, computers and OUs.
+Depends on complete core/domain/users/groups/computers/OUs data. The collector requests only the DACL section of `nTSecurityDescriptor` for the normalized default-domain root, users, groups, computers and OUs.
 
-The collector requests only the DACL section of `nTSecurityDescriptor`. `Complete` preserves descriptor control flags; DACL state (`NotPresent`, `Null`, `Empty`, `Present`); Allow/Deny standard ACEs; Allow/Deny object ACEs; trustee SID; access mask; ACE flags/inheritance; and object/inherited-object GUIDs. Unsupported/malformed ACE semantics, missing descriptors or target inconsistencies produce `Partial`. Raw descriptor bytes are not persisted by default.
+`Complete` preserves descriptor control flags; DACL state (`NotPresent`, `Null`, `Empty`, `Present`); Allow/Deny standard ACEs; Allow/Deny object ACEs; trustee SID; access mask; ACE flags/inheritance; and object/inherited-object GUIDs. v3 additionally guarantees explicit descriptor parse-completeness/ACE-count operands and object-type presence operands used by offline ACL rules. Unsupported/malformed ACE semantics, missing descriptors or target inconsistencies produce `Partial`. Raw descriptor bytes are not persisted by default.
 
 ### `gpo.metadata` v1
 
@@ -101,45 +95,50 @@ Owner: `ad.ldap.gpo-links`
 
 Depends on complete `directory.core`, `directory.domains`, `directory.ous` and `gpo.metadata`.
 
-`Complete` guarantees:
+`Complete` guarantees every prerequisite domain/OU container was returned by link enumeration; each `gPLink` entry was normalized into a stable container→GPO edge; link order follows AD sequence; raw link options plus normalized `Enabled`/`Enforced` are retained; `gPOptions` plus normalized Block Inheritance are retained; linked GPO DNs resolve to collected GPO identities; and source evidence retains LDAP provenance. Malformed syntax, unknown targets, missing containers, invalid/unsupported options or duplicate container results produce `Partial`. This capability does not calculate RSoP/effective policy.
 
-- every prerequisite domain/OU container was returned by link enumeration;
-- each `gPLink` entry was normalized into a stable container→GPO edge;
-- 1-based stored link order follows AD `gPLink` sequence;
-- raw link options plus normalized `Enabled` and `Enforced` are preserved (`0x1` disabled, `0x2` enforced);
-- `gPOptions` plus normalized Block Inheritance are retained per domain/OU;
-- linked GPO DNs resolve to collected GPO identities;
-- source evidence retains LDAP provenance.
-
-Malformed syntax, unknown targets, missing containers, invalid/unsupported options or duplicate container results produce `Partial`. This capability does not calculate RSoP/effective policy.
-
-### `gpo.sysvol` v1
+### `gpo.sysvol` v3
 
 Owner: `ad.sysvol.gpo-settings`
 
 Depends on complete `gpo.metadata`. It is a strictly read-only Group Policy Template collector using each GPO's `gPCFileSysPath`.
 
-`Complete` guarantees that every known GPO with a usable SYSVOL path was recursively enumerated within configured file-count/read-size limits and that:
+`Complete` preserves bounded file inventory/hashes and reviewed normalization for `GPT.INI`, `GptTmpl.inf`, Registry.pol and Preferences XML. Later contract versions add evidence required by the current Rule Engine, including original registry value type, reviewed security-template registry normalization, and explicit safe GPP `cpassword` presence/absence semantics. Secret values are not persisted. A missing/unreadable GPO path, denied access, configured budget hit, malformed supported policy file or unsupported required semantic makes coverage incomplete; such data is never silently treated as absent/safe.
 
-- every enumerated file has stable GPO identity, normalized relative path, byte length and file classification;
-- every readable file within the configured size limit has SHA-256 inventory evidence;
-- root `GPT.INI` is normalized as INI settings;
-- `GptTmpl.inf` is normalized as security-template settings;
-- `Machine\\Registry.pol` and `User\\Registry.pol` are parsed as v1 PReg policy records;
-- DWORD/QWORD registry data is retained as normalized numeric values;
-- arbitrary registry string, multi-string and binary payloads are retained as metadata-only records rather than blindly persisted;
-- Preferences XML is parsed with DTD resolution disabled and records only the presence/count signal of legacy `cpassword` attributes; the `cpassword` value itself is never persisted;
-- INI-like values with secret-like keys are redacted unless the key is an explicitly recognized password-policy setting;
-- unknown policy files remain useful as inventory/hash evidence even when DogfighterAD does not yet understand their semantics.
+This capability does **not** promise semantic parsing of every Group Policy extension, compute effective/RSoP policy, validate endpoint application, modify SYSVOL, or collect arbitrary file contents as a generic text archive.
 
-A missing/unreadable GPO path, denied file/directory access, configured file-count/size limit hit, malformed supported policy file or unsupported Registry.pol semantic makes coverage `Partial`; such data is never silently treated as absent/safe.
+## AD CS 0.3.2 directory contracts
 
-v1 does **not** promise semantic parsing of every Group Policy extension, compute effective/RSoP policy, validate endpoint application, modify SYSVOL, or collect arbitrary file contents as a generic text archive.
+Owner for all five contracts: `ad.ldap.adcs` collector version `0.3.2`.
 
-### `adcs.directory` v1
+The collector reads only `CN=Public Key Services,CN=Services,<configurationNamingContext>` using LDAP and a DACL-only security-descriptor request. It does **not** contact CA RPC endpoints, CA registry, HTTP(S)/web enrollment, certificate enrollment services, or any other runtime surface. If no Enterprise CA (`pKIEnrollmentService`) is found after a successful search, all five capabilities are `NotApplicable` rather than a clean runtime-CA verdict.
 
-Status: planned.
+### `adcs.authorities` v1
+
+`Complete` guarantees stable Enterprise CA directory identities (`objectGUID`/DN), available `cn`/DNS host metadata and parsed `cACertificate` metadata/fingerprints for collected `pKIEnrollmentService` objects. Publication names are collected but normalized CA↔template edges belong to `adcs.publication`.
+
+### `adcs.templates` v1
+
+`Complete` guarantees stable certificate-template identities and the reviewed directory operands used by current rules/UI: common/display name, template OID/schema/minor version when present, EKUs, application policies, `msPKI-Certificate-Name-Flag`, `msPKI-Enrollment-Flag`, `msPKI-Private-Key-Flag`, `msPKI-RA-Signature`, validity period and overlap period. Missing or malformed required security operands produce collection issues/incomplete coverage; they are not converted to zero/defaults.
+
+### `adcs.publication` v1
+
+`Complete` guarantees normalized Enterprise CA → certificate-template publication relationships derived from `certificateTemplates`, with stable CA/template IDs and provenance-backed `template.publishedOnCa` evidence. Unresolvable published template names make the capability incomplete rather than silently dropping the edge.
+
+### `adcs.acls` v1
+
+`Complete` guarantees DACL state plus a fully parsed, ordered set of supported direct ACEs for collected Enterprise CA and certificate-template directory objects, including trustee SID, access type/mask, ACE flags, inheritance and object/inherited-object GUIDs where present. Current rules use this evidence for conservative Enrollment/AutoEnrollment and dangerous-directory-control candidates. Deny precedence and full Windows token/effective-access calculation are **not** claimed.
+
+### `adcs.trust` v1
+
+`Complete` guarantees the directory posture of `CN=NTAuthCertificates` when present and parsed certificate metadata/fingerprints for its `cACertificate` values. This is directory trust-store evidence only; it does not prove endpoint certificate-chain behavior or live authentication acceptance.
+
+### Legacy `adcs.directory` v1
+
+This identifier is retained in `CapabilityContractCatalog` so older custom profiles/code can deserialize/refer to the pre-0.3.2 placeholder. Built-in profiles and the current AD CS rule pack do not request it. New functionality must use the narrow contracts above or introduce separate future runtime capability IDs.
 
 ## Analysis compatibility
 
 A rule declares a minimum capability contract, for example `directory.users >= 2`. A snapshot with `directory.users v1 = Complete` is insufficient for that rule and must result in `NotVerified`/insufficient data, not a negative finding. A snapshot with v3 may satisfy a rule requiring v2 because versions are monotonic.
+
+AD CS runtime-dependent checks must require their own future capability IDs. Directory evidence from `adcs.*` v1 cannot be reinterpreted as proof of CA registry/RPC/web-enrollment/EPA/NTLM/issuance behavior.
