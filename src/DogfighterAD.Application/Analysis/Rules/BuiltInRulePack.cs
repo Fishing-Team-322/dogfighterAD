@@ -10,7 +10,7 @@ public sealed record AccountFlagDefinition(string Suffix, string Title, long Mas
 public static class BuiltInRulePack
 {
     public const string Id = "dogfighterad.core";
-    public const string Version = "1.1.0";
+    public const string Version = "1.2.0";
     public static IReadOnlyList<AccountFlagDefinition> AccountFlags { get; } = new AccountFlagDefinition[]
     {
         new("PREAUTH_DISABLED", "Kerberos preauthentication is disabled", 0x400000, FindingSeverity.High),
@@ -170,6 +170,7 @@ public static class BuiltInRulePack
                 { RequiredCapabilities = [new(CollectionCapabilities.GroupPolicyMetadata), new(CollectionCapabilities.GroupPolicySysvol), new(CollectionCapabilities.DirectoryDomains)] }, privilege));
         rules.Add(new GpoVersionRule(GpoMeta("AD.GPO.VERSION_MISMATCH", "LDAP and SYSVOL GPO versions differ", FindingSeverity.Low,
             ["gpo.versionNumber", "GPT.INI/General/Version"])));
+        rules.AddRange(CertificateServicesRulePack.Create());
         return rules.OrderBy(r => r.Metadata.Id, StringComparer.Ordinal).ToArray();
     }
 
