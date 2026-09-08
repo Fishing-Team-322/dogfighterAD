@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>dogfighter-ui</AssemblyName>
+    <RootNamespace>DogfighterAD.Web</RootNamespace>
+    <Version>0.3.1</Version>
+    <InformationalVersion>0.3.1-assessment-workflow</InformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DogfighterAD.Domain\DogfighterAD.Domain.csproj" />
+    <ProjectReference Include="..\DogfighterAD.Application\DogfighterAD.Application.csproj" />
+    <ProjectReference Include="..\DogfighterAD.Collectors.ActiveDirectory\DogfighterAD.Collectors.ActiveDirectory.csproj" />
+    <ProjectReference Include="..\DogfighterAD.Serialization\DogfighterAD.Serialization.csproj" />
+    <ProjectReference Include="..\DogfighterAD.SysvolWorker\DogfighterAD.SysvolWorker.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="wwwroot\**\*"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="CopySysvolWorker" AfterTargets="Build">
+    <ItemGroup>
+      <SysvolWorkerFiles Include="$(MSBuildThisFileDirectory)..\DogfighterAD.SysvolWorker\bin\$(Configuration)\net10.0\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(SysvolWorkerFiles)"
+          DestinationFiles="@(SysvolWorkerFiles->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="PublishSysvolWorker" AfterTargets="Publish">
+    <PropertyGroup>
+      <_SysvolWorkerPublishDir>$([System.IO.Path]::GetFullPath('$(PublishDir)', '$(MSBuildProjectDirectory)'))</_SysvolWorkerPublishDir>
+    </PropertyGroup>
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\DogfighterAD.SysvolWorker\DogfighterAD.SysvolWorker.csproj"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishDir=$(_SysvolWorkerPublishDir)" />
+  </Target>
+</Project>
