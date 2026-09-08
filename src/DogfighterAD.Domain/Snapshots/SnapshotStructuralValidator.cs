@@ -148,6 +148,14 @@ public static class SnapshotStructuralValidator
             services.Publications,
             "content.certificateServices.publications",
             violations);
+        RequireList(
+            services.SecurityDescriptors,
+            "content.certificateServices.securityDescriptors",
+            violations);
+        RequireList(
+            services.Aces,
+            "content.certificateServices.aces",
+            violations);
 
         if (authoritiesValid)
         {
