@@ -80,7 +80,7 @@ public sealed class CertificateServicesCollectorTests
     }
 
     [Fact]
-    public async Task CollectAsync_NoEnterpriseCa_IsNotApplicableInsteadOfFailure()
+    public async Task CollectAsync_NoEnterpriseCa_IsNotApplicableWithoutHidingTrustPosture()
     {
         var client = new FakeLdapClient(new LdapSearchResult([]));
         var collector = new CertificateServicesCollector(
@@ -93,11 +93,28 @@ public sealed class CertificateServicesCollectorTests
         Assert.Empty(services.Authorities);
         Assert.Empty(services.Templates);
         Assert.Empty(services.Publications);
-        Assert.All(result.Fragment.Coverage, coverage =>
+        Assert.False(Assert.IsType<CertificateServiceTrust>(services.Trust).NtAuthObjectPresent);
+
+        foreach (var capability in new[]
         {
+            CollectionCapabilities.AdcsAuthorities,
+            CollectionCapabilities.AdcsTemplates,
+            CollectionCapabilities.AdcsPublication,
+            CollectionCapabilities.AdcsAcls
+        })
+        {
+            var coverage = Assert.Single(result.Fragment.Coverage, item => item.CapabilityId == capability);
             Assert.Equal(CapabilityStatus.NotApplicable, coverage.Status);
+            Assert.Equal(0, coverage.ObservedItemCount);
             Assert.Empty(coverage.Issues);
-        });
+        }
+
+        var trustCoverage = Assert.Single(
+            result.Fragment.Coverage,
+            item => item.CapabilityId == CollectionCapabilities.AdcsTrust);
+        Assert.Equal(CapabilityStatus.Complete, trustCoverage.Status);
+        Assert.Equal(0, trustCoverage.ObservedItemCount);
+        Assert.Empty(trustCoverage.Issues);
     }
 
     [Fact]
