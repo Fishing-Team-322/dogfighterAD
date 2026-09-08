@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>dogfighter-ui</AssemblyName>
+    <RootNamespace>DogfighterAD.Web</RootNamespace>
+    <Version>0.3.0</Version>
+    <InformationalVersion>0.3.0-web-ui-foundation</InformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DogfighterAD.Domain\DogfighterAD.Domain.csproj" />
+    <ProjectReference Include="..\DogfighterAD.Application\DogfighterAD.Application.csproj" />
+    <ProjectReference Include="..\DogfighterAD.Serialization\DogfighterAD.Serialization.csproj" />
+  </ItemGroup>
+</Project>
