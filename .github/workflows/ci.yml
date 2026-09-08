@@ -94,6 +94,11 @@ jobs:
             }
           }
 
+      - name: Web UI JavaScript syntax
+        run: |
+          node --check src/DogfighterAD.Web/wwwroot/app.js
+          node --check src/DogfighterAD.Web/wwwroot/certificate-services.js
+
       - name: Unit tests
         run: dotnet run --project tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj --configuration Release --no-build
 
