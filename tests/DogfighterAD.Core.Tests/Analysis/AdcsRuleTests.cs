@@ -109,11 +109,11 @@ public sealed class AdcsRuleTests
 
     private static AnalysisReport Run(AdSnapshot snapshot, params string[] ids)
     {
-        var rules = AdcsRuleCatalog.Create();
+        var rules = CertificateServicesRulePack.Create();
         var selected = ids.Length == 0
             ? new HashSet<string>(["AD.ADCS.ESC1_CANDIDATE"], StringComparer.Ordinal)
             : ids.ToHashSet(StringComparer.Ordinal);
-        return new RuleEngine(rules, "test.adcs", "1.0.0").Analyze(
+        return new RuleEngine(rules, "test.adcs", CertificateServicesRulePack.Version).Analyze(
             snapshot,
             new RuleEngineOptions { RuleIds = selected },
             TestContext.Current.CancellationToken);
