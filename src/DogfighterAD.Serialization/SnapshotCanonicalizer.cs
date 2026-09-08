@@ -130,8 +130,54 @@ public static class SnapshotCanonicalizer
             Aces = content.Aces
                 .OrderBy(item => item.TargetObjectId.Value)
                 .ThenBy(item => item.AceIndex)
-                .ToArray()
+                .ToArray(),
+            CertificateServices = CanonicalizeCertificateServices(content.CertificateServices)
         };
+
+    private static CertificateServicesSnapshot? CanonicalizeCertificateServices(
+        CertificateServicesSnapshot? services)
+    {
+        if (services is null)
+        {
+            return null;
+        }
+
+        return services with
+        {
+            Authorities = services.Authorities
+                .Select(item => item with
+                {
+                    Certificates = SortCertificates(item.Certificates)
+                })
+                .OrderBy(item => item.Id.Value)
+                .ToArray(),
+            Templates = services.Templates
+                .Select(item => item with
+                {
+                    ExtendedKeyUsages = SortOrdinal(item.ExtendedKeyUsages),
+                    ApplicationPolicies = SortOrdinal(item.ApplicationPolicies)
+                })
+                .OrderBy(item => item.Id.Value)
+                .ToArray(),
+            Publications = services.Publications
+                .OrderBy(item => item.AuthorityId.Value)
+                .ThenBy(item => item.TemplateId.Value)
+                .ToArray(),
+            Trust = services.Trust is null
+                ? null
+                : services.Trust with
+                {
+                    Certificates = SortCertificates(services.Trust.Certificates)
+                }
+        };
+    }
+
+    private static IReadOnlyList<CertificateServiceCertificate> SortCertificates(
+        IEnumerable<CertificateServiceCertificate> certificates) =>
+        certificates
+            .OrderBy(item => item.Sha256, StringComparer.Ordinal)
+            .ThenBy(item => item.SerialNumber, StringComparer.Ordinal)
+            .ToArray();
 
     private static IReadOnlyList<string> SortOrdinal(IEnumerable<string> values) =>
         values.OrderBy(value => value, StringComparer.Ordinal).ToArray();
