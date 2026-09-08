@@ -82,7 +82,12 @@ public static class BuiltInCollectionProfiles
             CollectionCapabilities.DirectoryAcls,
             CollectionCapabilities.GroupPolicyMetadata,
             CollectionCapabilities.GroupPolicyLinks,
-            CollectionCapabilities.GroupPolicySysvol
+            CollectionCapabilities.GroupPolicySysvol,
+            CollectionCapabilities.AdcsAuthorities,
+            CollectionCapabilities.AdcsTemplates,
+            CollectionCapabilities.AdcsPublication,
+            CollectionCapabilities.AdcsAcls,
+            CollectionCapabilities.AdcsTrust
         },
         MaxConcurrency = 4,
         CollectorTimeout = TimeSpan.FromMinutes(3)
