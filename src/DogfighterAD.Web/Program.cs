@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
 using DogfighterAD.Application.Analysis;
@@ -13,6 +14,11 @@ if (!UiSettings.TryParse(args, out var settings, out var settingsError))
     return 64;
 }
 
+var productVersion = Assembly.GetExecutingAssembly()
+    .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+    .InformationalVersion
+    ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString()
+    ?? "unknown";
 var url = $"http://127.0.0.1:{settings!.Port}";
 var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
 {
@@ -25,6 +31,7 @@ builder.WebHost.ConfigureKestrel(options =>
     options.Limits.MaxRequestBodySize = DogadFormat.DefaultMaxContainerBytes + (1024L * 1024L);
 });
 builder.Services.AddSingleton<UiAnalysisStore>();
+builder.Services.AddSingleton<UiAssessmentStore>();
 
 await using var app = builder.Build();
 var jsonOptions = AnalysisReportWriter.CreateJsonOptions();
@@ -46,8 +53,8 @@ app.UseStaticFiles();
 app.MapGet("/api/status", () => Results.Json(new
 {
     product = "DogfighterAD",
-    uiVersion = "0.3.0",
-    mode = "offline-first",
+    uiVersion = "0.3.1",
+    mode = "local-assessment",
     bind = url,
     maxSnapshotBytes = DogadFormat.DefaultMaxContainerBytes
 }, jsonOptions));
@@ -55,6 +62,47 @@ app.MapGet("/api/status", () => Results.Json(new
 app.MapGet("/api/rules", () => Results.Json(
     BuiltInRulePack.Create().Select(rule => rule.Metadata).ToArray(),
     jsonOptions));
+
+app.MapPost("/api/assessments", (
+    UiStartAssessmentRequest request,
+    UiAssessmentStore assessments,
+    UiAnalysisStore analyses) =>
+{
+    try
+    {
+        var status = assessments.Start(request, productVersion, analyses);
+        return Results.Accepted($"/api/assessments/{status.AssessmentId}", status);
+    }
+    catch (ArgumentException)
+    {
+        return Results.BadRequest(new { error = "invalid-assessment-request" });
+    }
+    finally
+    {
+        request.Password = null;
+    }
+});
+
+app.MapGet("/api/assessments/{id:guid}", (Guid id, UiAssessmentStore assessments) =>
+    assessments.TryGet(id, out var status)
+        ? Results.Json(status, jsonOptions)
+        : Results.NotFound(new { error = "assessment-not-found" }));
+
+app.MapPost("/api/assessments/{id:guid}/cancel", (Guid id, UiAssessmentStore assessments) =>
+{
+    if (!assessments.TryGet(id, out _))
+        return Results.NotFound(new { error = "assessment-not-found" });
+    return assessments.Cancel(id)
+        ? Results.Ok(new { canceled = true })
+        : Results.Conflict(new { error = "assessment-not-cancelable" });
+});
+
+app.MapGet("/api/assessments/{id:guid}/snapshot", (Guid id, UiAssessmentStore assessments) =>
+{
+    if (!assessments.TryGetSnapshot(id, out var path, out var fileName))
+        return Results.NotFound(new { error = "snapshot-not-available" });
+    return Results.File(path, "application/octet-stream", fileName, enableRangeProcessing: false);
+});
 
 app.MapPost("/api/analyze", async (HttpRequest request, UiAnalysisStore store, CancellationToken cancellationToken) =>
 {
@@ -109,7 +157,7 @@ app.MapGet("/api/analyses/{id:guid}/html", async (Guid id, UiAnalysisStore store
 
 await app.StartAsync().ConfigureAwait(false);
 Console.WriteLine($"DogfighterAD UI listening on {url}");
-Console.WriteLine("The UI is loopback-only. Uploaded .dogad data and analysis reports remain in local process memory/temp storage.");
+Console.WriteLine("The UI is loopback-only. New assessments collect locally, save a verified .dogad, then analyze it offline.");
 
 if (settings.OpenBrowser)
 {
