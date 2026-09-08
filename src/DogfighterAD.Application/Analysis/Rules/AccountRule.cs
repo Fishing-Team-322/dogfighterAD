@@ -20,7 +20,7 @@ public sealed class AccountRule : RuleBase
     private string Prefix => _computer ? "computer" : "user";
 
     public AccountRule(RuleMetadata metadata, bool computer, AccountTest test, string path = "",
-        long mask = 0, bool excludeDc = false, FactValueKind kind = FactValueKind.Text) : base(metadata)
+        long mask = 0, bool excludeDc = false, FactValueKind kind = FactValueKind.Text) : base(metadata with { Version = "1.0.1" })
     { _computer = computer; _test = test; _path = path; _mask = mask; _excludeDc = excludeDc; _kind = kind; }
 
     public override IEnumerable<RuleEvaluation> Evaluate(AdSnapshot snapshot, RuleContext context)
@@ -67,6 +67,7 @@ public sealed class AccountRule : RuleBase
             else if (_test == AccountTest.EncryptionBit)
             {
                 var value = check.Integer(Capability, Prefix + ".supportedEncryptionTypes");
+                if (!check.Known) { yield return check.Unknown(); continue; }
                 // Explicit zero uses environment-dependent defaults; missing/zero is never converted to RC4 or AES.
                 check.Require(value is > 0 and <= uint.MaxValue, Capability, Prefix + ".supportedEncryptionTypes", "field.zero-or-invalid-encryption-mask");
                 yield return check.Verdict((value & _mask) != 0,

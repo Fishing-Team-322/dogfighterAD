@@ -139,6 +139,15 @@ internal static class AnalysisCommands
             $"not-verified={report.Evaluations.Count(x => x.Outcome == RuleOutcome.NotVerified)}; report={outputPath}").ConfigureAwait(false);
         if (report.Completion != AnalysisCompletion.Complete)
             await error.WriteLineAsync("Analysis is incomplete. Inspect missingData and rule errors; missing evidence was not treated as a clean result.").ConfigureAwait(false);
+        foreach (var gap in report.Evaluations.Where(e => e.Outcome == RuleOutcome.NotVerified)
+                     .SelectMany(e => e.MissingData.DistinctBy(g => (g.Code, g.Path)))
+                     .GroupBy(g => (g.Code, g.Path)).OrderByDescending(g => g.Count())
+                     .ThenBy(g => g.Key.Path, StringComparer.Ordinal).ThenBy(g => g.Key.Code, StringComparer.Ordinal))
+            await error.WriteLineAsync($"  missing-data: evaluations={gap.Count()} code={gap.Key.Code} path={gap.Key.Path}").ConfigureAwait(false);
+        if (report.Evaluations.Any(e => e.MissingData.Any(g => g.Code == "field.not-observed")))
+            await error.WriteLineAsync("Omitted LDAP fields may be unset or unreadable; collection Complete does not prove attribute absence.").ConfigureAwait(false);
+        if (report.Evaluations.Any(e => e.MissingData.Any(g => g.Code == "membership.proof-incomplete")))
+            await error.WriteLineAsync("Membership negatives require explicit complete member enumeration, including empty groups and primary-group evidence.").ConfigureAwait(false);
         return ExitCode(report, command.FailOn);
     }
     private static async Task<(AdSnapshot Snapshot, string Sha256)> ReadImmutableSnapshotAsync(string path, int maximumMiB, CancellationToken token)
