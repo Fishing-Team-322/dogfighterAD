@@ -10,6 +10,15 @@ public sealed record CertificateServicesSnapshot
     public IReadOnlyList<CertificateAuthority> Authorities { get; init; } = [];
     public IReadOnlyList<CertificateTemplate> Templates { get; init; } = [];
     public IReadOnlyList<CertificateTemplatePublication> Publications { get; init; } = [];
+
+    /// <summary>
+    /// DACL rows are intentionally scoped inside CertificateServices instead of being mixed into the
+    /// directory.acls inventory. The same normalized ACE representation is reused, but coverage and
+    /// absence semantics remain owned by adcs.acls.
+    /// </summary>
+    public IReadOnlyList<AdSecurityDescriptor> SecurityDescriptors { get; init; } = [];
+    public IReadOnlyList<AdAce> Aces { get; init; } = [];
+
     public CertificateServiceTrust? Trust { get; init; }
 }
 
