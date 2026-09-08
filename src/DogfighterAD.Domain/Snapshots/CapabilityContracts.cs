@@ -31,7 +31,7 @@ public static class CapabilityContractCatalog
             [CollectionCapabilities.DirectoryTrusts] = 1,
             [CollectionCapabilities.GroupPolicyMetadata] = 1,
             [CollectionCapabilities.GroupPolicyLinks] = 1,
-            [CollectionCapabilities.GroupPolicySysvol] = 2,
+            [CollectionCapabilities.GroupPolicySysvol] = 3,
             [CollectionCapabilities.AdcsDirectory] = 1
         };
 

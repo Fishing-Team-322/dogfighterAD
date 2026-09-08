@@ -100,7 +100,7 @@ public sealed class AccountAndRegistryRuleTests
         if (mode == "conflict") f.Setting(d.KeyPath, d.ValueName, negative.ToString(CultureInfo.InvariantCulture));
         if (mode == "directive") f.Setting(d.KeyPath, "**DeleteValues", null, FactValueKind.Text, registryType: 1, disposition: FactDisposition.MetadataOnly);
         var result = f.Check(id, AnalysisFixture.Gpo, "Machine");
-        Assert.Equal(mode switch { "positive" => RuleOutcome.Potential, "negative" => RuleOutcome.NotDetected, _ => RuleOutcome.NotVerified }, result.Outcome);
+        Assert.Equal(mode switch { "positive" => RuleOutcome.Potential, "negative" or "missing" => RuleOutcome.NotDetected, _ => RuleOutcome.NotVerified }, result.Outcome);
         if (mode is "positive" or "negative") Assert.Contains(result.Evidence, e => e.Path!.EndsWith(".registryValueType", StringComparison.Ordinal) && e.Value == "4");
     }
     [Fact]
@@ -109,7 +109,7 @@ public sealed class AccountAndRegistryRuleTests
         var f = new AnalysisFixture(); var d = BuiltInRulePack.RegistryDefinitions[0]; f.Setting(d.KeyPath, d.ValueName, "1");
         var report = f.Run(d.Id);
         Assert.Equal(RuleOutcome.Potential, Assert.Single(report.Evaluations, e => e.CheckKey == "Machine").Outcome);
-        Assert.Equal(RuleOutcome.NotVerified, Assert.Single(report.Evaluations, e => e.CheckKey == "User").Outcome);
-        Assert.Equal(AnalysisCompletion.Partial, report.Completion);
+        Assert.Equal(RuleOutcome.NotDetected, Assert.Single(report.Evaluations, e => e.CheckKey == "User").Outcome);
+        Assert.Equal(AnalysisCompletion.Complete, report.Completion);
     }
 }

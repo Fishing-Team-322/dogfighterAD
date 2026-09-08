@@ -106,7 +106,7 @@ public sealed class PolicyAclAndTrustRuleTests
         var f = new AnalysisFixture();
         if (mode != "missing") f.Setting("Privilege Rights", privilege, mode == "empty" ? "" : mode == "broad" ? "*S-1-5-11" : "Domain Users",
             FactValueKind.Text, GpoSettingKind.SecurityTemplate, path: "Machine\\Microsoft\\Windows NT\\SecEdit\\GptTmpl.inf");
-        Assert.Equal(mode switch { "broad" => RuleOutcome.Potential, "empty" => RuleOutcome.NotDetected, _ => RuleOutcome.NotVerified },
+        Assert.Equal(mode switch { "broad" => RuleOutcome.Potential, "empty" or "missing" => RuleOutcome.NotDetected, _ => RuleOutcome.NotVerified },
             f.Check("AD.GPO.PRIVILEGE." + privilege.ToUpperInvariant(), AnalysisFixture.Gpo).Outcome);
     }
     [Theory]

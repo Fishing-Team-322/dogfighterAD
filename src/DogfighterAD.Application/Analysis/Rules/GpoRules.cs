@@ -28,12 +28,21 @@ public sealed class GpoRegistryRule : RuleBase
                     StringComparer.OrdinalIgnoreCase.Equals(s.Section, _definition.KeyPath) &&
                     StringComparer.OrdinalIgnoreCase.Equals(s.Key, _definition.ValueName)).ToArray();
                 var path = $"{scope}:{_definition.KeyPath}\\{_definition.ValueName}";
-                check.Require(candidates.Length > 0, cap, path, "policy.value-not-observed");
                 // Without stored directive payloads an operation such as **DeleteValues cannot be
                 // resolved safely. Do not invent the final state or pick an arbitrary duplicate.
                 check.Require(!all.Any(s => s.Scope == scope && s.Kind == GpoSettingKind.RegistryPolicy &&
                     StringComparer.OrdinalIgnoreCase.Equals(s.Section, _definition.KeyPath) && s.Key.StartsWith("**", StringComparison.Ordinal)),
                     cap, path, "policy.unresolved-registry-operation");
+                if (candidates.Length == 0)
+                {
+                    AddCompleteSysvolCoverageEvidence(snapshot, check, path);
+                    if (!check.Known) { yield return check.Unknown() with { CheckKey = scope.ToString() }; continue; }
+                    yield return check.Verdict(false,
+                        $"Complete gpo.sysvol v3 collection contains no stored assignment for {path}. " +
+                        "This is a negative statement about the stored GPO scope only; resultant policy and OS defaults are not inferred.",
+                        checkKey: scope.ToString());
+                    continue;
+                }
                 var values = new List<long>();
                 foreach (var candidate in candidates)
                 {
@@ -61,6 +70,35 @@ public sealed class GpoRegistryRule : RuleBase
             }
         }
     }
+    internal static void AddCompleteSysvolCoverageEvidence(AdSnapshot snapshot, RuleCheck check, string path)
+    {
+        const string cap = CollectionCapabilities.GroupPolicySysvol;
+        var coverage = snapshot.Coverage.SingleOrDefault(c => c.CapabilityId == cap);
+        if (coverage is null || coverage.ContractVersion < 3 || coverage.Status != CapabilityStatus.Complete || coverage.Collectors.Count == 0)
+        {
+            check.Require(false, cap, path, coverage is not null && coverage.ContractVersion < 3
+                ? "capability.contract-too-old-for-negative-proof"
+                : "capability.complete-inventory-required-for-negative-proof");
+            return;
+        }
+
+        var collector = coverage.Collectors
+            .OrderBy(c => c.Id, StringComparer.Ordinal)
+            .ThenBy(c => c.Version, StringComparer.Ordinal)
+            .First();
+        check.AddEvidence([new Evidence
+        {
+            Kind = "capability-coverage",
+            CapabilityId = cap,
+            Source = "snapshot:coverage",
+            Path = path,
+            Value = $"status={coverage.Status};contractVersion={coverage.ContractVersion};observedItemCount={coverage.ObservedItemCount}",
+            ObservedAt = coverage.CompletedAt,
+            CollectorId = collector.Id,
+            CollectorVersion = collector.Version
+        }]);
+    }
+
     internal static bool IsScopePath(GpoPolicyScope scope, string path) => path.StartsWith(scope + "\\", StringComparison.OrdinalIgnoreCase);
     internal static string SettingFactPath(AdGpoSetting setting)
     {
@@ -117,7 +155,17 @@ public sealed class GpoPrivilegeRule : RuleBase
             var candidates = (byGpo.TryGetValue(gpo.Id, out var settings) ? settings : [])
                 .Where(s => s.Kind == GpoSettingKind.SecurityTemplate && s.Scope == GpoPolicyScope.Machine &&
                     StringComparer.OrdinalIgnoreCase.Equals(s.Section, "Privilege Rights") && s.Key == _privilege).ToArray();
-            check.Require(candidates.Length == 1, cap, "Privilege Rights/" + _privilege, "policy.value-missing-or-ambiguous");
+            if (candidates.Length == 0)
+            {
+                var path = "Privilege Rights/" + _privilege;
+                GpoRegistryRule.AddCompleteSysvolCoverageEvidence(snapshot, check, path);
+                if (!check.Known) { yield return check.Unknown(); continue; }
+                yield return check.Verdict(false,
+                    $"Complete gpo.sysvol v3 collection contains no stored assignment for {path}. " +
+                    "This does not establish effective local privilege assignment on any endpoint.");
+                continue;
+            }
+            check.Require(candidates.Length == 1, cap, "Privilege Rights/" + _privilege, "policy.value-ambiguous");
             if (!check.Known) { yield return check.Unknown(); continue; }
             var value = check.Text(cap, GpoRegistryRule.SettingFactPath(candidates[0]));
             check.Require(candidates[0].Disposition == FactDisposition.Stored && candidates[0].Value == value,
