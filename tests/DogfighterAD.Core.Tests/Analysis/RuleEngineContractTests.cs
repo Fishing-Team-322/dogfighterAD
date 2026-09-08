@@ -64,9 +64,9 @@ public sealed class RuleEngineContractTests
     {
         var f = new AnalysisFixture(); f.Uac(false, 0x400200); var snapshot = f.Build();
         var engine = new RuleEngine(BuiltInRulePack.Create()); var options = new RuleEngineOptions { RuleIds = new HashSet<string> { Rule } };
-        var first = engine.Analyze(snapshot, options); var changed = snapshot with
+        var first = engine.Analyze(snapshot, options, TestContext.Current.CancellationToken); var changed = snapshot with
         { Metadata = snapshot.Metadata with { SnapshotId = Guid.NewGuid() }, Content = snapshot.Content with { Users = [AnalysisFixture.User with { Name = "renamed" }] } };
-        Assert.Equal(Assert.Single(first.Findings).Fingerprint, Assert.Single(engine.Analyze(changed, options).Findings).Fingerprint);
+        Assert.Equal(Assert.Single(first.Findings).Fingerprint, Assert.Single(engine.Analyze(changed, options, TestContext.Current.CancellationToken).Findings).Fingerprint);
         Assert.NotEqual(RuleEngine.Fingerprint("pack", Rule, "a", "b"), RuleEngine.Fingerprint("pack", Rule, "ab", ""));
     }
     [Fact]
@@ -81,7 +81,7 @@ public sealed class RuleEngineContractTests
     public void RuleExceptionIsIsolatedWithoutEchoingPayload()
     {
         var good = BuiltInRulePack.Create().Single(x => x.Metadata.Id == Rule); var f = new AnalysisFixture(); f.Uac(false, 0x400200);
-        var report = new RuleEngine([good, new BrokenRule()]).Analyze(f.Build());
+        var report = new RuleEngine([good, new BrokenRule()]).Analyze(f.Build(), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Single(report.Findings); Assert.Equal(AnalysisCompletion.Error, report.Completion);
         Assert.DoesNotContain("SECRET_CANARY", JsonSerializer.Serialize(report), StringComparison.Ordinal);
     }
@@ -91,9 +91,9 @@ public sealed class RuleEngineContractTests
         var f = new AnalysisFixture(); var engine = new RuleEngine(BuiltInRulePack.Create());
         using var cts = new CancellationTokenSource(); cts.Cancel();
         Assert.ThrowsAny<OperationCanceledException>(() => engine.Analyze(f.Build(), cancellationToken: cts.Token));
-        Assert.Throws<AnalysisLimitException>(() => engine.Analyze(f.Build(), new() { MaxEvaluations = 1 }));
-        Assert.Throws<ArgumentException>(() => engine.Analyze(f.Build(), new() { RuleIds = new HashSet<string> { "UNKNOWN" } }));
-        Assert.Throws<ArgumentOutOfRangeException>(() => engine.Analyze(f.Build(), new() { AnalysisTime = AnalysisFixture.Now.AddDays(-1) }));
+        Assert.Throws<AnalysisLimitException>(() => engine.Analyze(f.Build(), new() { MaxEvaluations = 1 }, TestContext.Current.CancellationToken));
+        Assert.Throws<ArgumentException>(() => engine.Analyze(f.Build(), new() { RuleIds = new HashSet<string> { "UNKNOWN" } }, TestContext.Current.CancellationToken));
+        Assert.Throws<ArgumentOutOfRangeException>(() => engine.Analyze(f.Build(), new() { AnalysisTime = AnalysisFixture.Now.AddDays(-1) }, TestContext.Current.CancellationToken));
     }
     [Fact]
     public void ReportsAreDeterministicAcrossEnumerationAndCulture()
@@ -129,7 +129,7 @@ public sealed class RuleEngineContractTests
     {
         var f = new AnalysisFixture(); var snapshot = f.Build();
         snapshot = snapshot with { Content = snapshot.Content with { Users = [] } };
-        var report = new RuleEngine(BuiltInRulePack.Create()).Analyze(snapshot, new() { RuleIds = new HashSet<string> { Rule } });
+        var report = new RuleEngine(BuiltInRulePack.Create()).Analyze(snapshot, new() { RuleIds = new HashSet<string> { Rule } }, TestContext.Current.CancellationToken);
         Assert.Equal(RuleOutcome.NotVerified, Assert.Single(report.Evaluations).Outcome);
         Assert.Empty(report.Findings);
     }
