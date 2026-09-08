@@ -97,7 +97,7 @@ internal sealed class AnalysisFixture
     internal AnalysisReport Run(params string[] ids) => new RuleEngine(BuiltInRulePack.Create(), BuiltInRulePack.Id, BuiltInRulePack.Version)
         .Analyze(Build(), new() { RuleIds = ids.ToHashSet(StringComparer.Ordinal) }, TestContext.Current.CancellationToken);
     internal RuleEvaluation Check(string id, AdDirectoryObject? subject = null, string? key = null) =>
-        Assert.Single(Run(id).Evaluations.Where(e => e.Subject.StableId == Subject(subject ?? User) && (key is null || e.CheckKey == key)));
+        Assert.Single(Run(id).Evaluations, e => e.Subject.StableId == Subject(subject ?? User) && (key is null || e.CheckKey == key));
     internal void Policy(string field, string value, FactValueKind kind = FactValueKind.Integer, string? subject = null, string policyKind = "DefaultDomain")
     {
         const string cap = CollectionCapabilities.DirectorySecurityPolicy; subject ??= Subject(Domain);
