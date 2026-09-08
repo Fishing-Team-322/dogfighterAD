@@ -43,9 +43,24 @@ public sealed class WebCertificateServicesViewTests
             Authorities = [authority],
             Templates = [template],
             Publications = [new CertificateTemplatePublication(authorityId, templateId)],
-            SecurityDescriptors = [new AdSecurityDescriptor { TargetObjectId = templateId, DaclState = AdDaclState.Present }],
+            SecurityDescriptors =
+            [
+                new AdSecurityDescriptor { TargetObjectId = authorityId, DaclState = AdDaclState.Present },
+                new AdSecurityDescriptor { TargetObjectId = templateId, DaclState = AdDaclState.Present }
+            ],
             Aces =
             [
+                new AdAce
+                {
+                    TargetObjectId = authorityId,
+                    AceIndex = 0,
+                    TrusteeSid = "S-1-5-11",
+                    AccessType = AdAccessControlType.Allow,
+                    AccessMask = 0x00040000,
+                    AceFlags = 0,
+                    ObjectType = null,
+                    IsInherited = false
+                },
                 new AdAce
                 {
                     TargetObjectId = templateId,
@@ -71,6 +86,8 @@ public sealed class WebCertificateServicesViewTests
         var ca = Assert.Single(view.Authorities);
         Assert.Equal("ca01.mini.lab", ca.DnsHostName);
         Assert.Equal("User Template", Assert.Single(ca.PublishedTemplates).Name);
+        Assert.Equal("Present", ca.DaclState);
+        Assert.Contains("WriteDacl", Assert.Single(ca.DirectAces).Rights);
 
         var projectedTemplate = Assert.Single(view.Templates);
         Assert.Equal("MINI-CA", Assert.Single(projectedTemplate.PublishedAuthorities).Name);
