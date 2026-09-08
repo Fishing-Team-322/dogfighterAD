@@ -1,10 +1,10 @@
-# Built-in rule catalog — dogfighterad.core 1.0.0
+# Built-in rule catalog — dogfighterad.core 1.2.0
 
-This catalog documents **80 rule IDs** implemented in `Application/Analysis/Rules`. Use `dogfighter rules --format json` for metadata emitted by the built executable. The tables are generated from source declarations, not presented as an executed test result.
+This catalog documents **88 rule IDs** implemented in `Application/Analysis/Rules`. Use `dogfighter rules --format json` for metadata emitted by the built executable. The tables are generated from source declarations; CI also executes a rule-catalog smoke check against the built CLI.
 
 Required fields below are concise operand descriptions. All relevant observations must also pass provenance, disposition, type, identity, time and conflict checks. The complete runtime `requiredCapabilities`/`requiredFields` are included in report summaries. See [RULE_ENGINE.md](RULE_ENGINE.md) for status meanings and caveats.
 
-**Important:** configured GPO values, ACEs, SPNs, trust flags, delegation and age checks do not by themselves prove exploitability. Positive candidates are marked `Potential` where context is unresolved. A missing field is `NotVerified`, not a negative test. Thresholds are explicit organizational policy, not assumed directory values.
+**Important:** configured GPO values, ACEs, SPNs, trust flags, delegation, AD CS template flags and directory ACLs do not by themselves prove exploitability. Positive candidates are marked `Potential` where context is unresolved. A missing field is `NotVerified`, not a negative test. AD CS runtime-dependent conditions require separate future capabilities and are not inferred from Configuration-NC evidence.
 
 ## Users (17)
 
@@ -49,9 +49,9 @@ Required fields below are concise operand descriptions. All relevant observation
 
 | ID | Severity | Capability | Required operands / condition | Description |
 | --- | --- | --- | --- | --- |
-| `AD.PRIVILEGED.NOT_SENSITIVE` | High | `directory.users + groups + memberships + domains` | `user.userAccountControl (not-delegated bit); witnessed SID-root membership path` | Privileged enabled user; candidate, not effective runtime access |
-| `AD.PRIVILEGED.PASSWORD_NEVER_EXPIRES` | High | `directory.users + groups + memberships + domains` | `user.userAccountControl (expiry bit); witnessed SID-root membership path` | Privileged enabled user; candidate, not effective runtime access |
-| `AD.PRIVILEGED.SPN_ACCOUNT` | High | `directory.users + groups + memberships + domains` | `user.servicePrincipalName; witnessed SID-root membership path` | Privileged enabled user; candidate, not effective runtime access |
+| `AD.PRIVILEGED.NOT_SENSITIVE` | High | `directory.users + groups + memberships + domains` | `user.userAccountControl; witnessed SID-root membership path` | Privileged enabled user lacks the sensitive/not-delegated flag |
+| `AD.PRIVILEGED.PASSWORD_NEVER_EXPIRES` | High | `directory.users + groups + memberships + domains` | `user.userAccountControl; witnessed SID-root membership path` | Privileged enabled user has password expiration disabled |
+| `AD.PRIVILEGED.SPN_ACCOUNT` | High | `directory.users + groups + memberships + domains` | `user.servicePrincipalName; witnessed SID-root membership path` | Privileged enabled user has SPN values |
 
 ## Domain and fine-grained policy (8)
 
@@ -95,7 +95,7 @@ Required fields below are concise operand descriptions. All relevant observation
 | `AD.GPO.AUTOMATIC_UPDATES_DISABLED` | Low | `gpo.metadata + gpo.sysvol` | `Software\Policies\Microsoft\Windows\WindowsUpdate\AU\NoAutoUpdate; REG_DWORD=4; ==1` | GPO disables automatic updates in this policy setting |
 | `AD.GPO.CREDSSP_ORACLE` | High | `gpo.metadata + gpo.sysvol` | `Software\Microsoft\Windows\CurrentVersion\Policies\System\CredSSP\Parameters\AllowEncryptionOracle; REG_DWORD=4; ==2` | GPO selects the vulnerable CredSSP compatibility mode |
 | `AD.GPO.DEFENDER_REALTIME_DISABLED` | High | `gpo.metadata + gpo.sysvol` | `Software\Policies\Microsoft\Windows Defender\Real-Time Protection\DisableRealtimeMonitoring; REG_DWORD=4; ==1` | GPO requests disabling Defender real-time monitoring |
-| `AD.GPO.GPP_CPASSWORD` | High | `gpo.metadata + gpo.sysvol v2` | `cpassword-present (explicit true/false from fully parsed XML)` | Nonempty GPP cpassword signal, no secret export |
+| `AD.GPO.GPP_CPASSWORD` | High | `gpo.metadata + gpo.sysvol v2+` | `cpassword-present` | Nonempty GPP cpassword signal, no secret export |
 | `AD.GPO.INSECURE_GUEST_LOGONS` | Medium | `gpo.metadata + gpo.sysvol` | `Software\Policies\Microsoft\Windows\LanmanWorkstation\AllowInsecureGuestAuth; REG_DWORD=4; ==1` | GPO allows insecure SMB guest logons |
 | `AD.GPO.LDAP_CHANNEL_BINDING` | Medium | `gpo.metadata + gpo.sysvol` | `System\CurrentControlSet\Services\NTDS\Parameters\LdapEnforceChannelBinding; REG_DWORD=4; ==0` | GPO explicitly disables LDAP channel-binding enforcement |
 | `AD.GPO.LDAP_SIGNING` | High | `gpo.metadata + gpo.sysvol` | `System\CurrentControlSet\Services\NTDS\Parameters\LDAPServerIntegrity; REG_DWORD=4; <2` | GPO does not require LDAP server signing in this legacy setting |
@@ -121,6 +121,29 @@ Required fields below are concise operand descriptions. All relevant observation
 | `AD.GPO.WINRM_BASIC` | Medium | `gpo.metadata + gpo.sysvol` | `Software\Policies\Microsoft\Windows\WinRM\Service\AllowBasic; REG_DWORD=4; ==1` | GPO enables WinRM service Basic authentication |
 | `AD.GPO.WINRM_UNENCRYPTED` | High | `gpo.metadata + gpo.sysvol` | `Software\Policies\Microsoft\Windows\WinRM\Service\AllowUnencryptedTraffic; REG_DWORD=4; ==1` | GPO permits unencrypted WinRM service traffic |
 
+## Certificate Services / AD CS (8)
+
+The 0.3.2 rules are **directory-posture rules**. The collector reads Configuration-NC objects and DACLs only. Runtime CA registry/RPC/web-enrollment/EPA/NTLM/issuance state is not part of these predicates.
+
+| ID | Severity | Capability | Required operands / condition | Description |
+| --- | --- | --- | --- | --- |
+| `ADCS.TEMPLATE.ESC1_CANDIDATE` | High | `adcs.templates + adcs.publication + adcs.acls + directory.users v2 + groups + memberships v3 + domains` | published; low-priv Enrollment; authentication purpose; enrollee supplies subject; no approval; zero authorized signatures | **Potential** ESC1-like directory candidate; not runtime-verified ESC1 |
+| `ADCS.TEMPLATE.DANGEROUS_ACL` | High | `adcs.templates + adcs.acls + directory users/groups/memberships/domains` | fully parsed DACL; low-priv GenericAll/GenericWrite/WriteDacl/WriteOwner/unrestricted WriteProperty | Potential low-priv template control path |
+| `ADCS.TEMPLATE.BROAD_ENROLLMENT` | Medium | `adcs.templates + adcs.acls + directory users/groups/memberships/domains` | low-priv Enrollment or AutoEnrollment grant | Enrollment exposure posture; not privilege escalation by itself |
+| `ADCS.TEMPLATE.AUTHENTICATION_CAPABLE` | Informational | `adcs.templates` | authentication-capable EKU/application policy | Authentication-relevant template purpose posture |
+| `ADCS.TEMPLATE.ENROLLEE_SUPPLIES_SUBJECT` | Low | `adcs.templates` | `msPKI-Certificate-Name-Flag` enrollee-supplies-subject bit | Subject-name supply posture |
+| `ADCS.TEMPLATE.NO_APPROVAL` | Informational | `adcs.templates` | `msPKI-Enrollment-Flag` lacks pending/manager-approval bit | No directory-observed manager-approval gate |
+| `ADCS.TEMPLATE.NO_AUTHORIZED_SIGNATURE` | Informational | `adcs.templates` | `msPKI-RA-Signature == 0` | No authorized-signature gate |
+| `ADCS.CA.DANGEROUS_DIRECTORY_ACL` | High | `adcs.authorities + adcs.acls + directory users/groups/memberships/domains` | fully parsed CA directory DACL; low-priv dangerous write/control grant | Potential control of the `pKIEnrollmentService` directory object only |
+
+### Low-privilege trustee proof
+
+The AD CS ACL rules do not equate every unknown SID with low privilege. Well-known broad principals are recognized, and custom group trustees require evidence-backed membership analysis. Nested group membership uses the existing membership proof engine; if the member scope is incomplete, a negative broad-enrollment/control conclusion is not manufactured. A custom enrollment group containing a proven privileged-only user is not treated as a low-privilege trustee merely because the group name looks generic.
+
+### ESC1 candidate boundary
+
+`ADCS.TEMPLATE.ESC1_CANDIDATE` requires all implemented directory prerequisites. A match is emitted as `Potential` with explicit text that CA runtime policy, `EDITF_ATTRIBUTESUBJECTALTNAME2`, RPC/service permissions, web enrollment, EPA/NTLM behavior, issuance behavior, deny precedence and exploitability were not verified. Those checks require separate future read-only capability IDs.
+
 ## Primary references
 
 - [UserAccountControl flags](https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/useraccountcontrol-manipulate-account-properties).
@@ -129,16 +152,15 @@ Required fields below are concise operand descriptions. All relevant observation
 - [Trust attributes — MS-ADTS](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/e9a2d23c-c31e-4a6f-88a0-6646fdb51a3c).
 - [ACE ordering](https://learn.microsoft.com/en-us/windows/win32/secauthz/order-of-aces-in-a-dacl) and [null versus empty DACL](https://learn.microsoft.com/en-us/windows/win32/ad/null-dacls-and-empty-dacls).
 - [Security template registry values — MS-GPSB](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-gpsb/3a14ca47-a22f-43c5-b35e-6be791003ca7).
-- [AlwaysInstallElevated: both machine and user policy required](https://learn.microsoft.com/en-us/windows/win32/msi/alwaysinstallelevated).
-- [Microsoft Windows security baseline settings](https://learn.microsoft.com/en-us/azure/governance/policy/samples/guest-configuration-baseline-windows).
+- [Certificate template protocol documentation — MS-CRTD](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-crtd/).
+- [Active Directory extended rights](https://learn.microsoft.com/en-us/windows/win32/adschema/extended-rights).
 
 References describe platform semantics. This pack is not certified compliance with every current Microsoft/CIS baseline. Match the policy file and applicability to the actual environment.
 
-## Proof-backed absence, pack 1.1.0
+## Proof-backed absence, pack 1.1.0+
 
-Requested LDAP omissions remain NotVerified unless the new collector persisted a
-validated read-access/absence proof. Confirmed empty SPN, SID history or delegation
-lists yield NotDetected for their presence predicates. Confirmed unset encryption
-configuration yields NotApplicable for explicit-mask rules; no effective cipher is
-inferred. Confirmed absent replicated-logon timestamps yield NotApplicable for age
-measurement, not a never-logged-on assertion. See RULE_ENGINE.md for the exact gates.
+Requested LDAP omissions remain `NotVerified` unless the collector persisted a validated read-access/absence proof. Confirmed empty SPN, SID history or delegation lists yield `NotDetected` for their presence predicates. Confirmed unset encryption configuration yields `NotApplicable` for explicit-mask rules; no effective cipher is inferred. Confirmed absent replicated-logon timestamps yield `NotApplicable` for age measurement, not a never-logged-on assertion. Membership v3 can certify an omitted `member` attribute as an empty direct-member set only when its proof is coherent. See RULE_ENGINE.md for the exact gates.
+
+## AD CS addition, pack 1.2.0
+
+Pack 1.2.0 adds the eight `ADCS.*` rules above and raises the built-in catalog from 80 to 88 IDs. The AD CS rule slice itself is exposed by `CertificateServicesRulePack` version `1.1.0`; the overall report still records the built-in pack as `dogfighterad.core/1.2.0`.
