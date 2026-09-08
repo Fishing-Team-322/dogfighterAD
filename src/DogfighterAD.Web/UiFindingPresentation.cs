@@ -84,6 +84,16 @@ public static class UiFindingPresentationMapper
     private const string BroadEnrollment = "ADCS.TEMPLATE.BROAD_ENROLLMENT";
     private const string DangerousCaAcl = "ADCS.CA.DANGEROUS_DIRECTORY_ACL";
 
+    private static readonly HashSet<string> DangerousRights = new(StringComparer.Ordinal)
+    {
+        "GenericAll", "GenericWrite", "WriteDacl", "WriteOwner", "WriteProperty"
+    };
+
+    private static readonly HashSet<string> EnrollmentRights = new(StringComparer.Ordinal)
+    {
+        "Enroll", "AutoEnroll"
+    };
+
     public static UiFindingPresentationView Map(
         AnalysisReport report,
         UiCertificateServicesView certificateServices)
@@ -141,47 +151,50 @@ public static class UiFindingPresentationMapper
             ?? new ObjectReference("snapshot", "snapshot");
         var template = certificateServices.Templates.FirstOrDefault(item => item.StableId == affected.StableId);
         var authority = certificateServices.Authorities.FirstOrDefault(item => item.StableId == affected.StableId);
-        var presentation = Metadata(finding);
-        var keyEvidence = BuildKeyEvidence(finding, template, authority);
-        var keyPaths = keyEvidence
+        var copy = CustomerCopy(finding);
+        var key = BuildKeyEvidence(finding, template, authority);
+        var keyPaths = key
             .Where(item => !string.IsNullOrWhiteSpace(item.SourcePath))
             .Select(item => item.SourcePath!)
             .ToHashSet(StringComparer.Ordinal);
-        var supporting = finding.Evidence
-            .Where(item => !keyPaths.Contains(item.Path) && IsSupporting(item.Path))
-            .Select(item => EvidenceRow("Supporting", item))
-            .ToArray();
-        var context = finding.Evidence
-            .Where(item => !keyPaths.Contains(item.Path) && !IsSupporting(item.Path))
-            .Select(item => EvidenceRow("Context", item))
-            .ToArray();
 
         return new UiFindingPresentation
         {
             RuleId = finding.RuleId,
             Fingerprint = finding.Fingerprint,
-            CustomerTitle = presentation.Title,
+            CustomerTitle = copy.Title,
             Severity = finding.Severity.ToString(),
-            CustomerStatus = CustomerStatus(finding.Status),
-            Summary = presentation.Summary,
-            Impact = presentation.Impact,
-            Recommendation = presentation.Recommendation,
+            CustomerStatus = finding.Status == FindingStatus.NotVerified ? "Could not verify" : finding.Status.ToString(),
+            Summary = copy.Summary,
+            Impact = copy.Impact,
+            Recommendation = copy.Recommendation,
             Confidence = finding.Confidence.ToString(),
-            StatusBoundary = finding.RuleId == Esc1 && finding.Status == FindingStatus.Potential
-                ? "DogfighterAD verified the directory-side conditions only. CA runtime configuration and successful issuance were not verified."
-                : finding.Status == FindingStatus.Potential
-                    ? "This is a potential exposure based on the collected evidence. Complete Windows effective access or runtime exploitability was not asserted."
-                    : null,
+            StatusBoundary = StatusBoundary(finding),
             AffectedObject = new UiAffectedObjectPresentation(
                 affected.DisplayName ?? template?.DisplayName ?? template?.CommonName ?? authority?.Name ?? affected.StableId,
-                ObjectType(affected.Kind),
+                FriendlyObjectType(affected.Kind),
                 affected.StableId,
                 affected.DistinguishedName),
             Conditions = BuildConditions(finding, template),
-            KeyEvidence = keyEvidence,
-            SupportingEvidence = supporting,
-            ContextEvidence = context
+            KeyEvidence = key,
+            SupportingEvidence = finding.Evidence
+                .Where(item => !keyPaths.Contains(item.Path) && IsSupporting(item.Path))
+                .Select(item => MapEvidence("Supporting", item))
+                .ToArray(),
+            ContextEvidence = finding.Evidence
+                .Where(item => !keyPaths.Contains(item.Path) && !IsSupporting(item.Path))
+                .Select(item => MapEvidence("Context", item))
+                .ToArray()
         };
+    }
+
+    private static string? StatusBoundary(Finding finding)
+    {
+        if (finding.RuleId == Esc1 && finding.Status == FindingStatus.Potential)
+            return "DogfighterAD verified the directory-side conditions only. CA runtime configuration and successful issuance were not verified.";
+        if (finding.Status == FindingStatus.Potential)
+            return "This is a potential exposure based on the collected evidence. Complete Windows effective access or runtime exploitability was not asserted.";
+        return null;
     }
 
     private static IReadOnlyList<UiConditionPresentation> BuildConditions(
@@ -191,23 +204,22 @@ public static class UiFindingPresentationMapper
         if (finding.RuleId != Esc1)
             return [];
 
-        var enrollment = FriendlyEnrollmentDetail(template);
-        var purpose = template is null
-            ? "Observed by the rule"
-            : template.ExtendedKeyUsages.Concat(template.ApplicationPolicies).FirstOrDefault(FriendlyPurpose) is string oid
-                ? FriendlyPurposeName(oid)
-                : "Authentication-capable purpose observed";
+        var enrollment = FindRelevantAce(template?.DirectAces ?? [], EnrollmentRights, finding.Evidence);
+        var purpose = template?.ExtendedKeyUsages.Concat(template.ApplicationPolicies)
+            .FirstOrDefault(IsAuthenticationPurpose);
         var publication = template?.PublishedAuthorities.FirstOrDefault()?.Name;
 
         return
         [
             new("Published on CA", "Yes", publication ?? "Proven by the matching rule evaluation", "Met"),
-            new("Low-privileged enrollment", "Yes", enrollment, "Met"),
-            new("Authentication capable", "Yes", purpose, "Met"),
+            new("Low-privileged enrollment", "Yes", enrollment is null
+                ? "Proven by the matching rule evaluation"
+                : $"{FriendlyPrincipal(enrollment.TrusteeSid)} · {FriendlyRight(enrollment.Rights.First(EnrollmentRights.Contains))}", "Met"),
+            new("Authentication capable", "Yes", purpose is null ? "Proven by the matching rule evaluation" : FriendlyPurpose(purpose), "Met"),
             new("Requester supplies subject", "Yes", "ENROLLEE_SUPPLIES_SUBJECT is part of the proven match", "Met"),
             new("Manager approval required", "No", "The matching rule verified that the pending/approval gate is absent", "Met"),
             new("Authorized signatures required", "0", "The matching rule verified zero required authorized signatures", "Met"),
-            new("CA runtime conditions", "Not verified", "Registry, RPC, web enrollment and successful issuance are outside this directory-derived rule", "NotVerified")
+            new("CA runtime conditions", "Not verified", "Runtime CA policy and successful issuance are outside this directory-derived rule", "NotVerified")
         ];
     }
 
@@ -221,17 +233,17 @@ public static class UiFindingPresentationMapper
 
         if (finding.RuleId is DangerousTemplateAcl or DangerousCaAcl)
         {
-            var candidate = FindProvableAce(finding, aces, DangerousRights);
-            if (candidate is not null)
+            var ace = FindRelevantAce(aces, DangerousRights, finding.Evidence);
+            if (ace is not null)
             {
-                var technicalRight = candidate.Rights.First(DangerousRights.Contains);
+                var technicalRight = ace.Rights.First(DangerousRights.Contains);
                 result.Add(AceEvidence(
                     finding.RuleId == DangerousCaAcl
-                        ? $"{FriendlyPrincipal(candidate.TrusteeSid)} can change this CA directory object"
-                        : $"{FriendlyPrincipal(candidate.TrusteeSid)} can modify this certificate template",
-                    candidate,
+                        ? $"{FriendlyPrincipal(ace.TrusteeSid)} can change this CA directory object"
+                        : $"{FriendlyPrincipal(ace.TrusteeSid)} can modify this certificate template",
+                    ace,
                     technicalRight,
-                    AceSourcePath(finding, candidate.AceIndex)));
+                    EvidencePathForAce(finding.Evidence, ace.AceIndex)));
             }
             else
             {
@@ -240,30 +252,30 @@ public static class UiFindingPresentationMapper
                     Classification = "Key",
                     Headline = finding.RuleId == DangerousCaAcl
                         ? "A proven low-privilege path can change the Enterprise CA directory object"
-                        : "A proven low-privilege path can modify this certificate template",
-                    SourcePath = finding.Evidence.FirstOrDefault(item => item.Path.Contains("securityDescriptor.dacl", StringComparison.Ordinal))?.Path
+                        : "A proven low-privilege path can modify this certificate template"
                 });
             }
+            return result;
         }
-        else if (finding.RuleId is BroadEnrollment or Esc1)
+
+        if (finding.RuleId is BroadEnrollment or Esc1)
         {
-            var candidate = FindProvableAce(finding, aces, EnrollmentRights);
-            if (candidate is not null)
+            var ace = FindRelevantAce(aces, EnrollmentRights, finding.Evidence);
+            if (ace is not null)
             {
-                var technicalRight = candidate.Rights.First(EnrollmentRights.Contains);
+                var technicalRight = ace.Rights.First(EnrollmentRights.Contains);
                 result.Add(AceEvidence(
-                    $"{FriendlyPrincipal(candidate.TrusteeSid)} can request certificates from this template",
-                    candidate,
+                    $"{FriendlyPrincipal(ace.TrusteeSid)} can request certificates from this template",
+                    ace,
                     technicalRight,
-                    AceSourcePath(finding, candidate.AceIndex)));
+                    EvidencePathForAce(finding.Evidence, ace.AceIndex)));
             }
             else
             {
                 result.Add(new UiEvidencePresentation
                 {
                     Classification = "Key",
-                    Headline = "Low-privileged users have a proven certificate enrollment path",
-                    SourcePath = finding.Evidence.FirstOrDefault(item => item.Path.Contains("securityDescriptor.dacl", StringComparison.Ordinal))?.Path
+                    Headline = "Low-privileged users have a proven certificate enrollment path"
                 });
             }
 
@@ -287,50 +299,64 @@ public static class UiFindingPresentationMapper
                 Headline = "Requester can supply certificate subject information",
                 Right = "ENROLLEE_SUPPLIES_SUBJECT",
                 TechnicalRight = "certificateNameFlags bit 0x00000001",
-                SourcePath = FindPath(finding, "template.certificateNameFlags")
+                SourcePath = FindPath(finding.Evidence, "template.certificateNameFlags")
             });
             result.Add(new UiEvidencePresentation
             {
                 Classification = "Key",
                 Headline = "Certificate usage is authentication-capable",
                 Right = template is null ? "Authentication capable" : FriendlyAuthenticationPurpose(template),
-                SourcePath = FindPath(finding, "template.eku") ?? FindPath(finding, "template.applicationPolicy")
+                SourcePath = FindPath(finding.Evidence, "template.eku") ?? FindPath(finding.Evidence, "template.applicationPolicy")
             });
             result.Add(new UiEvidencePresentation
             {
                 Classification = "Key",
                 Headline = "Manager approval is not required",
                 Right = "Approval disabled by collected template flags",
-                SourcePath = FindPath(finding, "template.enrollmentFlags")
+                SourcePath = FindPath(finding.Evidence, "template.enrollmentFlags")
             });
             result.Add(new UiEvidencePresentation
             {
                 Classification = "Key",
                 Headline = "Authorized signatures are not required",
                 Right = "0 required signatures",
-                SourcePath = FindPath(finding, "template.requiredAuthorizedSignatures")
+                SourcePath = FindPath(finding.Evidence, "template.requiredAuthorizedSignatures")
             });
         }
 
         return result;
     }
 
-    private static UiCertificateAceView? FindProvableAce(
-        Finding finding,
+    private static UiCertificateAceView? FindRelevantAce(
         IReadOnlyList<UiCertificateAceView> aces,
-        IReadOnlySet<string> relevantRights)
+        IReadOnlySet<string> rights,
+        IReadOnlyList<Evidence> evidence)
     {
-        var evidenceIndexes = finding.Evidence
-            .Select(item => TryParseAceIndex(item.Path, out var index) ? index : (int?)null)
-            .Where(item => item.HasValue)
-            .Select(item => item!.Value)
-            .ToHashSet();
+        var candidates = aces
+            .Where(item => item.AccessType == "Allow" && item.Rights.Any(rights.Contains))
+            .ToArray();
+        if (candidates.Length == 0)
+            return null;
 
-        return aces
-            .Where(item => evidenceIndexes.Contains(item.AceIndex))
-            .Where(item => item.AccessType == "Allow")
-            .Where(item => item.Rights.Any(relevantRights.Contains))
-            .FirstOrDefault(item => IsBroadLowPrivilegeSid(item.TrusteeSid));
+        var indexes = evidence
+            .Select(item => TryAceIndex(item.Path, out var value) ? value : (int?)null)
+            .Where(item => item.HasValue)
+            .Select(item => item.GetValueOrDefault())
+            .ToHashSet();
+        if (indexes.Count > 0)
+        {
+            var indexed = candidates.Where(item => indexes.Contains(item.AceIndex)).ToArray();
+            if (indexed.Length == 1)
+                return indexed[0];
+            var broadIndexed = indexed.FirstOrDefault(item => IsBroadPrincipal(item.TrusteeSid));
+            if (broadIndexed is not null)
+                return broadIndexed;
+        }
+
+        var broad = candidates.FirstOrDefault(item => IsBroadPrincipal(item.TrusteeSid));
+        if (broad is not null)
+            return broad;
+        return candidates.Length == 1 ? candidates[0] : null;
     }
 
     private static UiEvidencePresentation AceEvidence(
@@ -352,25 +378,20 @@ public static class UiFindingPresentationMapper
         RuleEvaluation evaluation,
         AnalysisReport report)
     {
-        var title = report.Rules.FirstOrDefault(item => item.RuleId == evaluation.RuleId)?.Title
-            ?? evaluation.RuleId;
-        var missing = evaluation.MissingData.Select(MissingEvidenceText).ToArray();
-        var reason = evaluation.Outcome == RuleOutcome.Error
-            ? "The check failed before a trustworthy verdict could be produced."
-            : MissingReason(evaluation.MissingData);
-
+        var title = report.Rules.FirstOrDefault(item => item.RuleId == evaluation.RuleId)?.Title ?? evaluation.RuleId;
+        var isError = evaluation.Outcome == RuleOutcome.Error;
         return new UiNotVerifiedPresentation
         {
             RuleId = evaluation.RuleId,
             CustomerTitle = title,
-            Status = evaluation.Outcome == RuleOutcome.Error ? "Check failed" : "Could not verify",
+            Status = isError ? "Check failed" : "Could not verify",
             Subject = evaluation.Subject.DisplayName ?? evaluation.Subject.DistinguishedName ?? evaluation.Subject.StableId,
-            Reason = reason,
-            Caution = evaluation.Outcome == RuleOutcome.Error
+            Reason = isError ? "The check failed before a trustworthy verdict could be produced." : MissingReason(evaluation.MissingData),
+            Caution = isError
                 ? "The rule failed; no clean result was inferred."
                 : "DogfighterAD did not collect enough trustworthy evidence to determine whether this condition is secure or insecure. This should not be interpreted as a clean result.",
             TechnicalOutcome = evaluation.Outcome.ToString(),
-            MissingEvidence = missing
+            MissingEvidence = evaluation.MissingData.Select(MissingEvidenceText).ToArray()
         };
     }
 
@@ -380,8 +401,6 @@ public static class UiFindingPresentationMapper
             return "The template or CA security descriptor could not be fully collected or verified.";
         if (gaps.Any(item => item.CapabilityId.StartsWith("adcs.", StringComparison.Ordinal)))
             return "Required Certificate Services directory evidence is missing, incomplete or unusable.";
-        if (gaps.Any(item => item.Path == "coverage"))
-            return "A required collection capability was unavailable or incomplete.";
         return "Required snapshot evidence is missing, conflicting or unusable.";
     }
 
@@ -393,33 +412,33 @@ public static class UiFindingPresentationMapper
         return $"{label}: {gap.CapabilityId} · {gap.Path} · {gap.Code}";
     }
 
-    private static (string Title, string Summary, string Impact, string Recommendation) Metadata(Finding finding) =>
+    private static (string Title, string Summary, string Impact, string Recommendation) CustomerCopy(Finding finding) =>
         finding.RuleId switch
         {
             Esc1 => (
                 "Potential certificate impersonation risk",
-                "This certificate template combines a proven low-privilege enrollment path with requester-controlled identity information and authentication-capable certificate usage.",
-                "If the remaining CA runtime conditions also permit it, a user may be able to obtain a certificate representing another account.",
+                "This certificate template combines broad enrollment access with requester-controlled identity information and authentication-capable certificate usage.",
+                "If remaining CA runtime conditions also permit it, a user may be able to obtain a certificate representing another account.",
                 "Restrict enrollment permissions, prevent requester-supplied identity where it is not required, and review approval and signature requirements."),
             DangerousTemplateAcl => (
                 "Certificate template permissions can be modified by low-privileged users",
-                "Collected directory evidence proves a potential low-privilege path to security-sensitive template modification rights.",
-                "A principal with these rights may be able to alter certificate template settings or permissions. Complete Windows effective access was not inferred.",
-                "Remove unnecessary modification rights from low-privileged principals and retain only the minimum approved PKI administration permissions."),
+                "Collected evidence proves a potential low-privilege path to security-sensitive template modification rights.",
+                "These rights may allow changes to certificate template configuration or permissions. Complete Windows effective access was not inferred.",
+                "Remove unnecessary modification rights from low-privileged principals and retain only approved PKI administration permissions."),
             BroadEnrollment => (
                 "Certificate enrollment is available to low-privileged users",
-                "Collected directory evidence proves a low-privilege enrollment or auto-enrollment path for this template.",
+                "Collected evidence proves a low-privilege enrollment or auto-enrollment path for this template.",
                 "A broader population can request certificates from this template. This finding alone does not claim privilege escalation.",
-                "Restrict enrollment permissions to the users and groups that require this template and review nested group membership."),
+                "Restrict enrollment permissions to users and groups that require this template and review nested membership."),
             DangerousCaAcl => (
                 "Enterprise CA directory permissions can be changed by low-privileged users",
-                "Collected directory evidence proves a potential low-privilege path to security-sensitive permissions on the Enterprise CA directory object.",
-                "A principal with these directory rights may be able to alter the CA object's permissions or properties. CA runtime permissions were not verified.",
-                "Remove unnecessary write, ownership or permission-management rights from low-privileged principals on the Enterprise CA directory object."),
+                "Collected evidence proves a potential low-privilege path to security-sensitive permissions on the Enterprise CA directory object.",
+                "These directory rights may allow changes to the CA object. CA runtime permissions were not verified.",
+                "Remove unnecessary write, ownership or permission-management rights from low-privileged principals."),
             _ => (finding.Title, finding.Description, finding.Risk, finding.Remediation)
         };
 
-    private static UiEvidencePresentation EvidenceRow(string classification, Evidence evidence) => new()
+    private static UiEvidencePresentation MapEvidence(string classification, Evidence evidence) => new()
     {
         Classification = classification,
         Headline = FriendlyEvidenceHeadline(evidence.Path),
@@ -452,13 +471,7 @@ public static class UiFindingPresentationMapper
         _ => path
     };
 
-    private static string CustomerStatus(FindingStatus status) => status switch
-    {
-        FindingStatus.NotVerified => "Could not verify",
-        _ => status.ToString()
-    };
-
-    private static string ObjectType(string kind) => kind switch
+    private static string FriendlyObjectType(string kind) => kind switch
     {
         "certificate-template" => "Certificate Template",
         "certificate-authority" => "Enterprise CA",
@@ -486,17 +499,7 @@ public static class UiFindingPresentationMapper
         _ => 1
     };
 
-    private static readonly HashSet<string> DangerousRights = new(StringComparer.Ordinal)
-    {
-        "GenericAll", "GenericWrite", "WriteDacl", "WriteOwner", "WriteProperty"
-    };
-
-    private static readonly HashSet<string> EnrollmentRights = new(StringComparer.Ordinal)
-    {
-        "Enroll", "AutoEnroll"
-    };
-
-    private static bool IsBroadLowPrivilegeSid(string sid) =>
+    private static bool IsBroadPrincipal(string sid) =>
         sid is "S-1-1-0" or "S-1-5-11" or "S-1-5-32-545" || sid.EndsWith("-513", StringComparison.Ordinal);
 
     private static string FriendlyPrincipal(string sid) => sid switch
@@ -520,42 +523,29 @@ public static class UiFindingPresentationMapper
         _ => right
     };
 
-    private static string? AceSourcePath(Finding finding, int aceIndex) =>
-        finding.Evidence.FirstOrDefault(item => item.Path == $"securityDescriptor.dacl.ace[{aceIndex}].accessMask")?.Path
-        ?? finding.Evidence.FirstOrDefault(item => item.Path.StartsWith($"securityDescriptor.dacl.ace[{aceIndex}]", StringComparison.Ordinal))?.Path;
-
-    private static string? FindPath(Finding finding, string pathPrefix) =>
-        finding.Evidence.FirstOrDefault(item => item.Path.StartsWith(pathPrefix, StringComparison.Ordinal))?.Path;
-
-    private static bool TryParseAceIndex(string path, out int index)
+    private static bool TryAceIndex(string path, out int index)
     {
+        index = -1;
         const string marker = "securityDescriptor.dacl.ace[";
         var start = path.IndexOf(marker, StringComparison.Ordinal);
         if (start < 0)
-        {
-            index = -1;
             return false;
-        }
         start += marker.Length;
         var end = path.IndexOf(']', start);
         return end > start && int.TryParse(path.AsSpan(start, end - start), NumberStyles.None, CultureInfo.InvariantCulture, out index);
     }
 
-    private static string FriendlyEnrollmentDetail(UiCertificateTemplateView? template)
-    {
-        if (template is null)
-            return "Proven by the matching rule evaluation";
-        var ace = template.DirectAces.FirstOrDefault(item =>
-            item.AccessType == "Allow" && item.Rights.Any(EnrollmentRights.Contains) && IsBroadLowPrivilegeSid(item.TrusteeSid));
-        return ace is null
-            ? "Proven through collected ACL and membership evidence"
-            : $"{FriendlyPrincipal(ace.TrusteeSid)} · {FriendlyRight(ace.Rights.First(EnrollmentRights.Contains))}";
-    }
+    private static string? EvidencePathForAce(IReadOnlyList<Evidence> evidence, int aceIndex) =>
+        evidence.FirstOrDefault(item => item.Path == $"securityDescriptor.dacl.ace[{aceIndex}].accessMask")?.Path
+        ?? evidence.FirstOrDefault(item => item.Path.StartsWith($"securityDescriptor.dacl.ace[{aceIndex}]", StringComparison.Ordinal))?.Path;
 
-    private static bool FriendlyPurpose(string oid) => oid is
+    private static string? FindPath(IReadOnlyList<Evidence> evidence, string prefix) =>
+        evidence.FirstOrDefault(item => item.Path.StartsWith(prefix, StringComparison.Ordinal))?.Path;
+
+    private static bool IsAuthenticationPurpose(string oid) => oid is
         "1.3.6.1.5.5.7.3.2" or "1.3.6.1.4.1.311.20.2.2" or "1.3.6.1.5.2.3.4" or "2.5.29.37.0";
 
-    private static string FriendlyPurposeName(string oid) => oid switch
+    private static string FriendlyPurpose(string oid) => oid switch
     {
         "1.3.6.1.5.5.7.3.2" => "Client Authentication",
         "1.3.6.1.4.1.311.20.2.2" => "Smart Card Logon",
@@ -566,8 +556,8 @@ public static class UiFindingPresentationMapper
 
     private static string FriendlyAuthenticationPurpose(UiCertificateTemplateView template) =>
         template.ExtendedKeyUsages.Concat(template.ApplicationPolicies)
-            .Where(FriendlyPurpose)
-            .Select(FriendlyPurposeName)
+            .Where(IsAuthenticationPurpose)
+            .Select(FriendlyPurpose)
             .FirstOrDefault() ?? "Authentication capable";
 
     private static string CommonName(string distinguishedName)
