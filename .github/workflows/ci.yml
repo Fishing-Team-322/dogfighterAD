@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - develop
       - foundation/snapshot-core
       - feature/rule-engine
   pull_request:
@@ -47,7 +48,10 @@ jobs:
             'wwwroot/app.js',
             'wwwroot/styles.css',
             'wwwroot/certificate-services.js',
-            'wwwroot/certificate-services.css'
+            'wwwroot/certificate-services-core.js',
+            'wwwroot/certificate-services.css',
+            'wwwroot/finding-presentation.js',
+            'wwwroot/finding-presentation.css'
           )
           foreach ($asset in $requiredAssets) {
             $path = Join-Path $webOutput $asset
@@ -98,6 +102,8 @@ jobs:
         run: |
           node --check src/DogfighterAD.Web/wwwroot/app.js
           node --check src/DogfighterAD.Web/wwwroot/certificate-services.js
+          node --check src/DogfighterAD.Web/wwwroot/certificate-services-core.js
+          node --check src/DogfighterAD.Web/wwwroot/finding-presentation.js
 
       - name: Unit tests
         run: dotnet run --project tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj --configuration Release --no-build

@@ -54,7 +54,7 @@ app.UseStaticFiles();
 app.MapGet("/api/status", () => Results.Json(new
 {
     product = "DogfighterAD",
-    uiVersion = "0.3.2",
+    uiVersion = "0.4.0",
     mode = "local-assessment",
     bind = url,
     maxSnapshotBytes = DogadFormat.DefaultMaxContainerBytes
@@ -138,6 +138,14 @@ app.MapGet("/api/analyses/{id:guid}/certificate-services", (Guid id, UiAnalysisS
     store.TryGetCertificateServices(id, out var certificateServices)
         ? Results.Json(certificateServices, jsonOptions)
         : Results.NotFound(new { error = "analysis-not-found" }));
+
+app.MapGet("/api/analyses/{id:guid}/presentation", (Guid id, UiAnalysisStore store) =>
+{
+    if (!store.TryGet(id, out var report) || !store.TryGetCertificateServices(id, out var certificateServices))
+        return Results.NotFound(new { error = "analysis-not-found" });
+
+    return Results.Json(UiFindingPresentationMapper.Map(report, certificateServices), jsonOptions);
+});
 
 app.MapGet("/api/analyses/{id:guid}/json", (Guid id, UiAnalysisStore store) =>
 {
