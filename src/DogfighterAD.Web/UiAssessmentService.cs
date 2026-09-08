@@ -507,6 +507,7 @@ internal static class UiCollectionComposition
             new GroupMembershipCollector(ldapFactory),
             new TrustCollector(ldapFactory),
             new AclCollector(ldapFactory),
+            new CertificateServicesCollector(ldapFactory),
             new GpoMetadataCollector(ldapFactory),
             new GpoLinkCollector(ldapFactory),
             new GpoSysvolCollector(sysvolFactory, sysvolOptions)
