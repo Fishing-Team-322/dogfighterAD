@@ -1,5 +1,7 @@
 # Capability contracts
 
+> **Rule Engine 0.2.0 update:** see [RULE_ENGINE.md](RULE_ENGINE.md) for the implemented offline engine, 80 rules, expanded collection contracts, schema-2 compatibility and exact CLI/verification semantics. Historical checkpoints below are retained as history.
+
 Capability contracts define what data a snapshot is guaranteed to contain when a coverage record is marked `Complete` for a given contract version.
 
 This document is normative for built-in collectors. It must change together with `CapabilityContractCatalog` when a contract version changes.

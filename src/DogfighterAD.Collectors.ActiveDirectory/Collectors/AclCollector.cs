@@ -12,7 +12,7 @@ namespace DogfighterAD.Collectors.ActiveDirectory.Collectors;
 public sealed class AclCollector : ICollector
 {
     public const string CollectorId = "ad.ldap.acls";
-    public const string CollectorVersion = "0.1.0";
+    public const string CollectorVersion = "0.2.0";
     private const int DefaultPageSize = 500;
 
     private static readonly IReadOnlySet<string> ProvidedCapabilities =
@@ -292,6 +292,8 @@ public sealed class AclCollector : ICollector
         string locator,
         DateTimeOffset observedAt)
     {
+        AddFact(facts, targetId, "securityDescriptor.parseComplete", parsed.Complete ? "true" : "false", FactValueKind.Boolean, endpoint, locator, observedAt);
+        AddFact(facts, targetId, "securityDescriptor.aceCount", parsed.Aces.Count.ToString(CultureInfo.InvariantCulture), FactValueKind.Integer, endpoint, locator, observedAt);
         AddFact(facts, targetId, "securityDescriptor.daclState", parsed.State.ToString(), FactValueKind.Text, endpoint, locator, observedAt);
         AddFact(
             facts,
@@ -314,6 +316,8 @@ public sealed class AclCollector : ICollector
         DateTimeOffset observedAt)
     {
         var prefix = $"securityDescriptor.dacl.ace[{aceIndex}]";
+        AddFact(facts, targetId, $"{prefix}.objectTypePresent", ace.ObjectType.HasValue ? "true" : "false", FactValueKind.Boolean, endpoint, locator, observedAt);
+        AddFact(facts, targetId, $"{prefix}.inheritedObjectTypePresent", ace.InheritedObjectType.HasValue ? "true" : "false", FactValueKind.Boolean, endpoint, locator, observedAt);
         AddFact(facts, targetId, $"{prefix}.trusteeSid", ace.TrusteeSid, FactValueKind.Sid, endpoint, locator, observedAt);
         AddFact(facts, targetId, $"{prefix}.accessType", ace.AccessType.ToString(), FactValueKind.Text, endpoint, locator, observedAt);
         AddFact(facts, targetId, $"{prefix}.accessMask", ace.AccessMask.ToString(CultureInfo.InvariantCulture), FactValueKind.Integer, endpoint, locator, observedAt);

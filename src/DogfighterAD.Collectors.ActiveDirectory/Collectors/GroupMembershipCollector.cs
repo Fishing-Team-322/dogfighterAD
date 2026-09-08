@@ -13,7 +13,7 @@ namespace DogfighterAD.Collectors.ActiveDirectory.Collectors;
 public sealed class GroupMembershipCollector : ICollector
 {
     public const string CollectorId = "ad.ldap.group-memberships";
-    public const string CollectorVersion = "0.1.0";
+    public const string CollectorVersion = "0.2.0";
     private const int DefaultPageSize = 1000;
 
     private static readonly IReadOnlySet<string> ProvidedCapabilities =
@@ -352,6 +352,19 @@ public sealed class GroupMembershipCollector : ICollector
                     rangeResult.Error ?? $"Membership range for '{entry.DistinguishedName}' was incomplete.",
                     target));
             }
+
+            // Persist the observed enumeration bounds. An omitted member attribute can mean
+            // an unreadable field; it is not an explicit empty set for offline negative proofs.
+            var memberWasReturned = entry.Attributes.Keys.Any(name =>
+                name.Equals("member", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("member;range=", StringComparison.OrdinalIgnoreCase));
+            var observedAt = _timeProvider.GetUtcNow();
+            AddFact(observations, groupId, "group.memberReadComplete",
+                (rangeResult.Complete && memberWasReturned).ToString(), FactValueKind.Boolean,
+                target, entry.DistinguishedName, observedAt);
+            AddFact(observations, groupId, "group.observedMemberCount",
+                rangeResult.Members.Count.ToString(CultureInfo.InvariantCulture), FactValueKind.Integer,
+                target, entry.DistinguishedName, observedAt);
 
             foreach (var memberDn in rangeResult.Members)
             {

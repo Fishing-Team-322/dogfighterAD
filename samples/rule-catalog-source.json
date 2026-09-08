@@ -1,0 +1,562 @@
+[
+  {
+    "id": "AD.ACL.BROAD_GENERIC_ALL",
+    "severity": "High",
+    "capabilitySummary": "directory.acls v3 + directory.domains",
+    "operandSummary": "parseComplete, aceCount, ordered ACE operands/type-presence",
+    "title": "A broad principal has an Allow ACE carrying full-control rights"
+  },
+  {
+    "id": "AD.ACL.BROAD_REPLICATION_RIGHT",
+    "severity": "High",
+    "capabilitySummary": "directory.acls v3 + directory.domains",
+    "operandSummary": "parseComplete, aceCount, ordered ACE operands/type-presence",
+    "title": "A broad principal has a replication-related Allow ACE on the domain"
+  },
+  {
+    "id": "AD.ACL.BROAD_RESET_PASSWORD",
+    "severity": "High",
+    "capabilitySummary": "directory.acls v3 + directory.domains",
+    "operandSummary": "parseComplete, aceCount, ordered ACE operands/type-presence",
+    "title": "A broad principal has an Allow ACE for password reset"
+  },
+  {
+    "id": "AD.ACL.BROAD_WRITE",
+    "severity": "High",
+    "capabilitySummary": "directory.acls v3 + directory.domains",
+    "operandSummary": "parseComplete, aceCount, ordered ACE operands/type-presence",
+    "title": "A broad principal has an Allow ACE carrying write-property rights"
+  },
+  {
+    "id": "AD.ACL.BROAD_WRITE_DACL",
+    "severity": "High",
+    "capabilitySummary": "directory.acls v3 + directory.domains",
+    "operandSummary": "parseComplete, aceCount, ordered ACE operands/type-presence",
+    "title": "A broad principal has an Allow ACE carrying WRITE_DAC"
+  },
+  {
+    "id": "AD.ACL.BROAD_WRITE_OWNER",
+    "severity": "High",
+    "capabilitySummary": "directory.acls v3 + directory.domains",
+    "operandSummary": "parseComplete, aceCount, ordered ACE operands/type-presence",
+    "title": "A broad principal has an Allow ACE carrying WRITE_OWNER"
+  },
+  {
+    "id": "AD.ACL.UNRESTRICTED_DACL",
+    "severity": "High",
+    "capabilitySummary": "directory.acls v1",
+    "operandSummary": "securityDescriptor.daclState",
+    "title": "An AD object has a null or absent DACL"
+  },
+  {
+    "id": "AD.COMPUTER.CONSTRAINED_DELEGATION",
+    "severity": "Medium",
+    "capabilitySummary": "directory.computers",
+    "operandSummary": "computer.userAccountControl; computer.allowedToDelegateTo",
+    "title": "Explicit constrained-delegation targets"
+  },
+  {
+    "id": "AD.COMPUTER.DES_ONLY",
+    "severity": "High",
+    "capabilitySummary": "directory.computers",
+    "operandSummary": "computer.userAccountControl & 0x200000",
+    "title": "Account is restricted to DES keys"
+  },
+  {
+    "id": "AD.COMPUTER.EXPLICIT_DES",
+    "severity": "High",
+    "capabilitySummary": "directory.computers",
+    "operandSummary": "computer.userAccountControl; computer.supportedEncryptionTypes",
+    "title": "Explicit DES advertisement (bits 0x3)"
+  },
+  {
+    "id": "AD.COMPUTER.EXPLICIT_RC4",
+    "severity": "Medium",
+    "capabilitySummary": "directory.computers",
+    "operandSummary": "computer.userAccountControl; computer.supportedEncryptionTypes",
+    "title": "Explicit RC4 advertisement (bit 0x4)"
+  },
+  {
+    "id": "AD.COMPUTER.PASSWORD_AGE",
+    "severity": "Medium",
+    "capabilitySummary": "directory.computers",
+    "operandSummary": "computer.userAccountControl; computer.pwdLastSet",
+    "title": "Password-event age above configured review threshold"
+  },
+  {
+    "id": "AD.COMPUTER.PASSWORD_NEVER_EXPIRES",
+    "severity": "Medium",
+    "capabilitySummary": "directory.computers",
+    "operandSummary": "computer.userAccountControl & 0x10000",
+    "title": "Password expiration is disabled on the account"
+  },
+  {
+    "id": "AD.COMPUTER.PASSWORD_NOT_REQUIRED",
+    "severity": "High",
+    "capabilitySummary": "directory.computers",
+    "operandSummary": "computer.userAccountControl & 0x20",
+    "title": "Password-not-required account flag is set"
+  },
+  {
+    "id": "AD.COMPUTER.PREAUTH_DISABLED",
+    "severity": "High",
+    "capabilitySummary": "directory.computers",
+    "operandSummary": "computer.userAccountControl & 0x400000",
+    "title": "Kerberos preauthentication is disabled"
+  },
+  {
+    "id": "AD.COMPUTER.PROTOCOL_TRANSITION",
+    "severity": "High",
+    "capabilitySummary": "directory.computers",
+    "operandSummary": "computer.userAccountControl & 0x1000000",
+    "title": "Protocol-transition delegation is configured"
+  },
+  {
+    "id": "AD.COMPUTER.REPLICATED_LOGON_AGE",
+    "severity": "Low",
+    "capabilitySummary": "directory.computers",
+    "operandSummary": "computer.userAccountControl; computer.lastLogonTimestamp",
+    "title": "Replicated logon-event age above configured review threshold"
+  },
+  {
+    "id": "AD.COMPUTER.REVERSIBLE_PASSWORD_ALLOWED",
+    "severity": "High",
+    "capabilitySummary": "directory.computers",
+    "operandSummary": "computer.userAccountControl & 0x80",
+    "title": "Reversible password encryption is allowed"
+  },
+  {
+    "id": "AD.COMPUTER.UNCONSTRAINED_DELEGATION",
+    "severity": "High",
+    "capabilitySummary": "directory.computers",
+    "operandSummary": "computer.userAccountControl & 0x80000",
+    "title": "Unconstrained delegation is configured"
+  },
+  {
+    "id": "AD.GPO.ALWAYS_INSTALL_ELEVATED",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "Software\\Policies\\Microsoft\\Windows\\Installer\\AlwaysInstallElevated; REG_DWORD=4; ==1",
+    "title": "Windows Installer elevation policy is enabled"
+  },
+  {
+    "id": "AD.GPO.AUTOMATIC_UPDATES_DISABLED",
+    "severity": "Low",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU\\NoAutoUpdate; REG_DWORD=4; ==1",
+    "title": "GPO disables automatic updates in this policy setting"
+  },
+  {
+    "id": "AD.GPO.CREDSSP_ORACLE",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\CredSSP\\Parameters\\AllowEncryptionOracle; REG_DWORD=4; ==2",
+    "title": "GPO selects the vulnerable CredSSP compatibility mode"
+  },
+  {
+    "id": "AD.GPO.DEFENDER_REALTIME_DISABLED",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "Software\\Policies\\Microsoft\\Windows Defender\\Real-Time Protection\\DisableRealtimeMonitoring; REG_DWORD=4; ==1",
+    "title": "GPO requests disabling Defender real-time monitoring"
+  },
+  {
+    "id": "AD.GPO.GPP_CPASSWORD",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol v2",
+    "operandSummary": "cpassword-present (explicit true/false from fully parsed XML)",
+    "title": "Nonempty GPP cpassword signal, no secret export"
+  },
+  {
+    "id": "AD.GPO.INSECURE_GUEST_LOGONS",
+    "severity": "Medium",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "Software\\Policies\\Microsoft\\Windows\\LanmanWorkstation\\AllowInsecureGuestAuth; REG_DWORD=4; ==1",
+    "title": "GPO allows insecure SMB guest logons"
+  },
+  {
+    "id": "AD.GPO.LDAP_CHANNEL_BINDING",
+    "severity": "Medium",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "System\\CurrentControlSet\\Services\\NTDS\\Parameters\\LdapEnforceChannelBinding; REG_DWORD=4; ==0",
+    "title": "GPO explicitly disables LDAP channel-binding enforcement"
+  },
+  {
+    "id": "AD.GPO.LDAP_SIGNING",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "System\\CurrentControlSet\\Services\\NTDS\\Parameters\\LDAPServerIntegrity; REG_DWORD=4; <2",
+    "title": "GPO does not require LDAP server signing in this legacy setting"
+  },
+  {
+    "id": "AD.GPO.LM_HASH_STORAGE",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "System\\CurrentControlSet\\Control\\Lsa\\NoLMHash; REG_DWORD=4; ==0",
+    "title": "GPO permits legacy LM hash storage"
+  },
+  {
+    "id": "AD.GPO.LOCAL_ACCOUNT_TOKEN_FILTER",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\LocalAccountTokenFilterPolicy; REG_DWORD=4; ==1",
+    "title": "GPO relaxes remote local-account token filtering"
+  },
+  {
+    "id": "AD.GPO.LSA_PROTECTION_DISABLED",
+    "severity": "Medium",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "System\\CurrentControlSet\\Control\\Lsa\\RunAsPPL; REG_DWORD=4; ==0",
+    "title": "GPO disables configured LSA protected-process mode"
+  },
+  {
+    "id": "AD.GPO.NTLM_COMPATIBILITY",
+    "severity": "Medium",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "System\\CurrentControlSet\\Control\\Lsa\\LmCompatibilityLevel; REG_DWORD=4; <5",
+    "title": "GPO configures an NTLM compatibility level below 5"
+  },
+  {
+    "id": "AD.GPO.PRIVILEGE.SEBACKUPPRIVILEGE",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol + directory.domains",
+    "operandSummary": "Privilege Rights/SeBackupPrivilege; stored SID list",
+    "title": "Broad-principal privilege assignment in stored GPO"
+  },
+  {
+    "id": "AD.GPO.PRIVILEGE.SEDEBUGPRIVILEGE",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol + directory.domains",
+    "operandSummary": "Privilege Rights/SeDebugPrivilege; stored SID list",
+    "title": "Broad-principal privilege assignment in stored GPO"
+  },
+  {
+    "id": "AD.GPO.PRIVILEGE.SEIMPERSONATEPRIVILEGE",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol + directory.domains",
+    "operandSummary": "Privilege Rights/SeImpersonatePrivilege; stored SID list",
+    "title": "Broad-principal privilege assignment in stored GPO"
+  },
+  {
+    "id": "AD.GPO.PRIVILEGE.SELOADDRIVERPRIVILEGE",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol + directory.domains",
+    "operandSummary": "Privilege Rights/SeLoadDriverPrivilege; stored SID list",
+    "title": "Broad-principal privilege assignment in stored GPO"
+  },
+  {
+    "id": "AD.GPO.PRIVILEGE.SERESTOREPRIVILEGE",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol + directory.domains",
+    "operandSummary": "Privilege Rights/SeRestorePrivilege; stored SID list",
+    "title": "Broad-principal privilege assignment in stored GPO"
+  },
+  {
+    "id": "AD.GPO.PRIVILEGE.SETAKEOWNERSHIPPRIVILEGE",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol + directory.domains",
+    "operandSummary": "Privilege Rights/SeTakeOwnershipPrivilege; stored SID list",
+    "title": "Broad-principal privilege assignment in stored GPO"
+  },
+  {
+    "id": "AD.GPO.PRIVILEGE.SETCBPRIVILEGE",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol + directory.domains",
+    "operandSummary": "Privilege Rights/SeTcbPrivilege; stored SID list",
+    "title": "Broad-principal privilege assignment in stored GPO"
+  },
+  {
+    "id": "AD.GPO.RDP_NLA_DISABLED",
+    "severity": "Medium",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "Software\\Policies\\Microsoft\\Windows NT\\Terminal Services\\UserAuthentication; REG_DWORD=4; ==0",
+    "title": "GPO disables the RDP NLA requirement"
+  },
+  {
+    "id": "AD.GPO.RDP_SECURITY_LAYER",
+    "severity": "Medium",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "Software\\Policies\\Microsoft\\Windows NT\\Terminal Services\\SecurityLayer; REG_DWORD=4; <2",
+    "title": "GPO does not require the RDP TLS security layer"
+  },
+  {
+    "id": "AD.GPO.SMB1_ENABLED",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters\\SMB1; REG_DWORD=4; ==1",
+    "title": "GPO enables SMB1 server configuration"
+  },
+  {
+    "id": "AD.GPO.SMB_CLIENT_SIGNING",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters\\RequireSecuritySignature; REG_DWORD=4; ==0",
+    "title": "GPO does not require SMB client signing"
+  },
+  {
+    "id": "AD.GPO.SMB_SERVER_SIGNING",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters\\RequireSecuritySignature; REG_DWORD=4; ==0",
+    "title": "GPO does not require SMB server signing"
+  },
+  {
+    "id": "AD.GPO.UAC_DISABLED",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\EnableLUA; REG_DWORD=4; ==0",
+    "title": "GPO disables User Account Control"
+  },
+  {
+    "id": "AD.GPO.VERSION_MISMATCH",
+    "severity": "Low",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "gpo.versionNumber + GPT.INI/General/Version",
+    "title": "LDAP/SYSVOL version discrepancy; not tampering proof"
+  },
+  {
+    "id": "AD.GPO.WDIGEST_CACHING",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "System\\CurrentControlSet\\Control\\SecurityProviders\\WDigest\\UseLogonCredential; REG_DWORD=4; ==1",
+    "title": "GPO enables WDigest logon-credential caching"
+  },
+  {
+    "id": "AD.GPO.WINRM_BASIC",
+    "severity": "Medium",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "Software\\Policies\\Microsoft\\Windows\\WinRM\\Service\\AllowBasic; REG_DWORD=4; ==1",
+    "title": "GPO enables WinRM service Basic authentication"
+  },
+  {
+    "id": "AD.GPO.WINRM_UNENCRYPTED",
+    "severity": "High",
+    "capabilitySummary": "gpo.metadata + gpo.sysvol",
+    "operandSummary": "Software\\Policies\\Microsoft\\Windows\\WinRM\\Service\\AllowUnencryptedTraffic; REG_DWORD=4; ==1",
+    "title": "GPO permits unencrypted WinRM service traffic"
+  },
+  {
+    "id": "AD.POLICY.COMPLEXITY",
+    "severity": "Medium",
+    "capabilitySummary": "directory.security-policy v1",
+    "operandSummary": "policy.kind; policy.distinguishedName; policy.complexityEnabled",
+    "title": "Password complexity is explicitly disabled"
+  },
+  {
+    "id": "AD.POLICY.HISTORY",
+    "severity": "Low",
+    "capabilitySummary": "directory.security-policy v1",
+    "operandSummary": "policy.kind; policy.distinguishedName; policy.passwordHistoryLength",
+    "title": "Password history is below the configured baseline"
+  },
+  {
+    "id": "AD.POLICY.LOCKOUT_DISABLED",
+    "severity": "Medium",
+    "capabilitySummary": "directory.security-policy v1",
+    "operandSummary": "policy.kind; policy.distinguishedName; policy.lockoutThreshold",
+    "title": "Account lockout is explicitly disabled"
+  },
+  {
+    "id": "AD.POLICY.LOCKOUT_DURATION",
+    "severity": "Low",
+    "capabilitySummary": "directory.security-policy v1",
+    "operandSummary": "policy.kind; policy.distinguishedName; policy.lockoutDurationTicks + policy.lockoutThreshold",
+    "title": "Lockout duration is below the configured baseline"
+  },
+  {
+    "id": "AD.POLICY.LOCKOUT_THRESHOLD",
+    "severity": "Low",
+    "capabilitySummary": "directory.security-policy v1",
+    "operandSummary": "policy.kind; policy.distinguishedName; policy.lockoutThreshold",
+    "title": "Lockout threshold exceeds the configured baseline"
+  },
+  {
+    "id": "AD.POLICY.MACHINE_ACCOUNT_QUOTA",
+    "severity": "Medium",
+    "capabilitySummary": "directory.security-policy v1",
+    "operandSummary": "policy.kind; policy.distinguishedName; policy.machineAccountQuota",
+    "title": "The domain permits a nonzero user machine-account quota"
+  },
+  {
+    "id": "AD.POLICY.MINIMUM_LENGTH",
+    "severity": "Medium",
+    "capabilitySummary": "directory.security-policy v1",
+    "operandSummary": "policy.kind; policy.distinguishedName; policy.minimumPasswordLength",
+    "title": "Password policy minimum length is below the configured baseline"
+  },
+  {
+    "id": "AD.POLICY.REVERSIBLE_ENCRYPTION",
+    "severity": "High",
+    "capabilitySummary": "directory.security-policy v1",
+    "operandSummary": "policy.kind; policy.distinguishedName; policy.reversibleEncryptionEnabled",
+    "title": "Password policy enables reversible encryption"
+  },
+  {
+    "id": "AD.PRIVILEGED.NOT_SENSITIVE",
+    "severity": "High",
+    "capabilitySummary": "directory.users + groups + memberships + domains",
+    "operandSummary": "user.userAccountControl (not-delegated bit); witnessed SID-root membership path",
+    "title": "Privileged enabled user; candidate, not effective runtime access"
+  },
+  {
+    "id": "AD.PRIVILEGED.PASSWORD_NEVER_EXPIRES",
+    "severity": "High",
+    "capabilitySummary": "directory.users + groups + memberships + domains",
+    "operandSummary": "user.userAccountControl (expiry bit); witnessed SID-root membership path",
+    "title": "Privileged enabled user; candidate, not effective runtime access"
+  },
+  {
+    "id": "AD.PRIVILEGED.SPN_ACCOUNT",
+    "severity": "High",
+    "capabilitySummary": "directory.users + groups + memberships + domains",
+    "operandSummary": "user.servicePrincipalName; witnessed SID-root membership path",
+    "title": "Privileged enabled user; candidate, not effective runtime access"
+  },
+  {
+    "id": "AD.TRUST.LEGACY_TYPE",
+    "severity": "Medium",
+    "capabilitySummary": "directory.trusts",
+    "operandSummary": "trust.partner/direction/type/attributes",
+    "title": "Legacy down-level trust type is configured"
+  },
+  {
+    "id": "AD.TRUST.SELECTIVE_AUTHENTICATION",
+    "severity": "Medium",
+    "capabilitySummary": "directory.trusts",
+    "operandSummary": "trust.partner/direction/type/attributes",
+    "title": "Outbound external trust lacks the selective-authentication flag"
+  },
+  {
+    "id": "AD.TRUST.TGT_DELEGATION",
+    "severity": "Medium",
+    "capabilitySummary": "directory.trusts",
+    "operandSummary": "trust.partner/direction/type/attributes",
+    "title": "Cross-organization TGT delegation is explicitly enabled"
+  },
+  {
+    "id": "AD.TRUST.TREAT_AS_EXTERNAL",
+    "severity": "Medium",
+    "capabilitySummary": "directory.trusts",
+    "operandSummary": "trust.partner/direction/type/attributes",
+    "title": "Forest trust is configured to be treated as external for filtering"
+  },
+  {
+    "id": "AD.USER.CONSTRAINED_DELEGATION",
+    "severity": "Medium",
+    "capabilitySummary": "directory.users",
+    "operandSummary": "user.userAccountControl; user.allowedToDelegateTo",
+    "title": "Explicit constrained-delegation targets"
+  },
+  {
+    "id": "AD.USER.DES_ONLY",
+    "severity": "High",
+    "capabilitySummary": "directory.users",
+    "operandSummary": "user.userAccountControl & 0x200000",
+    "title": "Account is restricted to DES keys"
+  },
+  {
+    "id": "AD.USER.EXPIRED_ENABLED",
+    "severity": "Low",
+    "capabilitySummary": "directory.users",
+    "operandSummary": "user.userAccountControl; user.accountExpires",
+    "title": "Enabled account with elapsed explicit expiry"
+  },
+  {
+    "id": "AD.USER.EXPLICIT_DES",
+    "severity": "High",
+    "capabilitySummary": "directory.users",
+    "operandSummary": "user.userAccountControl; user.supportedEncryptionTypes",
+    "title": "Explicit DES advertisement (bits 0x3)"
+  },
+  {
+    "id": "AD.USER.EXPLICIT_RC4",
+    "severity": "Medium",
+    "capabilitySummary": "directory.users",
+    "operandSummary": "user.userAccountControl; user.supportedEncryptionTypes",
+    "title": "Explicit RC4 advertisement (bit 0x4)"
+  },
+  {
+    "id": "AD.USER.GUEST_ENABLED",
+    "severity": "High",
+    "capabilitySummary": "directory.users + directory.domains",
+    "operandSummary": "user.userAccountControl; object.objectSid + domain.objectSid",
+    "title": "Exact domain Guest SID is enabled"
+  },
+  {
+    "id": "AD.USER.KRBTGT_PASSWORD_AGE",
+    "severity": "High",
+    "capabilitySummary": "directory.users + directory.domains",
+    "operandSummary": "user.userAccountControl; object.objectSid + domain.objectSid + user.pwdLastSet",
+    "title": "Exact domain krbtgt password-event age; disabled UAC still evaluated"
+  },
+  {
+    "id": "AD.USER.PASSWORD_AGE",
+    "severity": "Medium",
+    "capabilitySummary": "directory.users",
+    "operandSummary": "user.userAccountControl; user.pwdLastSet",
+    "title": "Password-event age above configured review threshold"
+  },
+  {
+    "id": "AD.USER.PASSWORD_NEVER_EXPIRES",
+    "severity": "Medium",
+    "capabilitySummary": "directory.users",
+    "operandSummary": "user.userAccountControl & 0x10000",
+    "title": "Password expiration is disabled on the account"
+  },
+  {
+    "id": "AD.USER.PASSWORD_NOT_REQUIRED",
+    "severity": "High",
+    "capabilitySummary": "directory.users",
+    "operandSummary": "user.userAccountControl & 0x20",
+    "title": "Password-not-required account flag is set"
+  },
+  {
+    "id": "AD.USER.PREAUTH_DISABLED",
+    "severity": "High",
+    "capabilitySummary": "directory.users",
+    "operandSummary": "user.userAccountControl & 0x400000",
+    "title": "Kerberos preauthentication is disabled"
+  },
+  {
+    "id": "AD.USER.PROTOCOL_TRANSITION",
+    "severity": "High",
+    "capabilitySummary": "directory.users",
+    "operandSummary": "user.userAccountControl & 0x1000000",
+    "title": "Protocol-transition delegation is configured"
+  },
+  {
+    "id": "AD.USER.REPLICATED_LOGON_AGE",
+    "severity": "Low",
+    "capabilitySummary": "directory.users",
+    "operandSummary": "user.userAccountControl; user.lastLogonTimestamp",
+    "title": "Replicated logon-event age above configured review threshold"
+  },
+  {
+    "id": "AD.USER.REVERSIBLE_PASSWORD_ALLOWED",
+    "severity": "High",
+    "capabilitySummary": "directory.users",
+    "operandSummary": "user.userAccountControl & 0x80",
+    "title": "Reversible password encryption is allowed"
+  },
+  {
+    "id": "AD.USER.SID_HISTORY",
+    "severity": "Medium",
+    "capabilitySummary": "directory.users",
+    "operandSummary": "user.userAccountControl; user.sidHistory",
+    "title": "Enabled user has SID history"
+  },
+  {
+    "id": "AD.USER.SPN_ACCOUNT",
+    "severity": "Medium",
+    "capabilitySummary": "directory.users",
+    "operandSummary": "user.userAccountControl; user.servicePrincipalName",
+    "title": "Enabled user has SPN values"
+  },
+  {
+    "id": "AD.USER.UNCONSTRAINED_DELEGATION",
+    "severity": "High",
+    "capabilitySummary": "directory.users",
+    "operandSummary": "user.userAccountControl & 0x80000",
+    "title": "Unconstrained delegation is configured"
+  }
+]

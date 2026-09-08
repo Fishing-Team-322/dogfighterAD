@@ -1,5 +1,18 @@
 # DogfighterAD
 
+## Rule Engine milestone (0.2.0)
+
+The current source includes an **offline 80-rule security assessment engine** over validated schema-2 `.dogad` snapshots, plus JSON/HTML reports and explicit missing-data outcomes. New collection evidence is required where older snapshots lack operands; the analyzer never substitutes CLR defaults for missing fields.
+
+```powershell
+dogfighter rules
+dogfighter analyze --snapshot .\new.dogad --output .\findings.json
+dogfighter analyze --snapshot .\new.dogad --output .\findings.html --format html
+```
+
+See [Rule Engine](docs/RULE_ENGINE.md), [80-rule catalog](docs/RULES.md), [Russian implementation notes](RULE_ENGINE_NOTES_RU.md), and [actual verification status](VALIDATION_RULE_ENGINE.md). New source/tests have not been compiled in the authoring environment (SDK unavailable); do not interpret this milestone as live AD validation.
+
+
 DogfighterAD is a snapshot-first, evidence-first Active Directory security assessment platform.
 
 The project is built around a strict separation between collection, normalization, analysis, evidence, storage, and reporting. The first development phase is read-only: collect security-relevant Active Directory facts into a versioned snapshot that can be analyzed and re-analyzed offline.
@@ -30,7 +43,7 @@ dogfighter inspect --snapshot .\mini.dogad
 
 `scan` uses the current OS security context for LDAP Negotiate authentication when no explicit identity is supplied. Explicit usernames are accepted with `-u`; passwords are read only from the hidden prompt and are reused for both LDAP and portable Kerberos SYSVOL on `audit-full`. NTLM is an explicit LDAP compatibility mode only and requires `--ldap-auth ntlm`. Non-TLS LDAP requires signing and sealing; `--ldaps` keeps platform certificate validation. Explicit credentials require a resolvable DC DNS hostname/FQDN rather than an IP literal. `inspect` is offline and prints snapshot/coverage/count summaries.
 
-MINILAB live validation includes a complete `audit-full` run from a non-domain/WORKGROUP Windows workstation using explicit credentials and portable Kerberos SYSVOL: all directory/GPO/SYSVOL capabilities completed with zero issues, and strict offline `.dogad` readback reproduced the same snapshot ID and coverage. Linux build/tests are green in CI; Linux live SYSVOL validation remains a later acceptance gate. Analysis rules, reports, diff/retest and graph analysis are not implemented yet.
+MINILAB live validation includes a complete `audit-full` run from a non-domain/WORKGROUP Windows workstation using explicit credentials and portable Kerberos SYSVOL: all directory/GPO/SYSVOL capabilities completed with zero issues, and strict offline `.dogad` readback reproduced the same snapshot ID and coverage. Linux build/tests are green in CI; Linux live SYSVOL validation remains a later acceptance gate. Offline rules and JSON/HTML reports are now implemented in the Rule Engine milestone above; diff/retest and full attack-graph analysis remain outside this release.
 
 ## Documentation
 

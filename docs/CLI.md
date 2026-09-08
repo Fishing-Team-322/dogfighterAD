@@ -1,5 +1,7 @@
 # DogfighterAD CLI
 
+> **Rule Engine 0.2.0 update:** see [RULE_ENGINE.md](RULE_ENGINE.md) for the implemented offline engine, 80 rules, expanded collection contracts, schema-2 compatibility and exact CLI/verification semantics. Historical checkpoints below are retained as history.
+
 The CLI is a thin composition layer over the collection, snapshot and serialization modules. It does not contain AD detection rules or duplicate collector logic.
 
 ## Build
