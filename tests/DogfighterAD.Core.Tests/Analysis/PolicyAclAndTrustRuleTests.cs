@@ -40,8 +40,8 @@ public sealed class PolicyAclAndTrustRuleTests
         const string pso = "password-policy:88888888-8888-8888-8888-888888888888";
         f.Policy("passwordHistoryLength", "24", subject: pso, policyKind: "FineGrained");
         var report = f.Run("AD.POLICY.MINIMUM_LENGTH");
-        Assert.Equal(RuleOutcome.Potential, Assert.Single(report.Evaluations.Where(e => e.Subject.StableId == AnalysisFixture.Subject(AnalysisFixture.Domain))).Outcome);
-        Assert.Equal(RuleOutcome.NotVerified, Assert.Single(report.Evaluations.Where(e => e.Subject.StableId == pso)).Outcome);
+        Assert.Equal(RuleOutcome.Potential, Assert.Single(report.Evaluations, e => e.Subject.StableId == AnalysisFixture.Subject(AnalysisFixture.Domain)).Outcome);
+        Assert.Equal(RuleOutcome.NotVerified, Assert.Single(report.Evaluations, e => e.Subject.StableId == pso).Outcome);
     }
     public static IEnumerable<object[]> AclCases()
     {
