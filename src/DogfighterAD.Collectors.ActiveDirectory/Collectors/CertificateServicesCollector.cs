@@ -187,7 +187,9 @@ public sealed class CertificateServicesCollector : ICollector
             .ToArray();
 
         var completed = _timeProvider.GetUtcNow();
-        var notApplicable = orderedAuthorities.Length == 0;
+        var noAuthorities = orderedAuthorities.Length == 0;
+        var noDirectoryAdcsObjects = noAuthorities && orderedTemplates.Length == 0;
+        var trustItemCount = trust.NtAuthObjectPresent ? 1 : 0;
         var certificateServices = new CertificateServicesSnapshot
         {
             Authorities = orderedAuthorities,
@@ -209,11 +211,11 @@ public sealed class CertificateServicesCollector : ICollector
                 },
                 Coverage =
                 [
-                    Coverage(CollectionCapabilities.AdcsAuthorities, orderedAuthorities.Length, startedAt, completed, issues, notApplicable),
-                    Coverage(CollectionCapabilities.AdcsTemplates, orderedTemplates.Length, startedAt, completed, issues, notApplicable),
-                    Coverage(CollectionCapabilities.AdcsPublication, orderedPublications.Length, startedAt, completed, issues, notApplicable),
-                    Coverage(CollectionCapabilities.AdcsAcls, orderedDescriptors.Length, startedAt, completed, issues, notApplicable),
-                    Coverage(CollectionCapabilities.AdcsTrust, trust is null ? 0 : 1, startedAt, completed, issues, notApplicable)
+                    Coverage(CollectionCapabilities.AdcsAuthorities, orderedAuthorities.Length, startedAt, completed, issues, noAuthorities),
+                    Coverage(CollectionCapabilities.AdcsTemplates, orderedTemplates.Length, startedAt, completed, issues, noDirectoryAdcsObjects),
+                    Coverage(CollectionCapabilities.AdcsPublication, orderedPublications.Length, startedAt, completed, issues, noAuthorities),
+                    Coverage(CollectionCapabilities.AdcsAcls, orderedDescriptors.Length, startedAt, completed, issues, noDirectoryAdcsObjects),
+                    Coverage(CollectionCapabilities.AdcsTrust, trustItemCount, startedAt, completed, issues, notApplicable: false)
                 ],
                 Observations = observations
                     .DistinctBy(item => item.FactId, StringComparer.Ordinal)
@@ -756,11 +758,11 @@ public sealed class CertificateServicesCollector : ICollector
         {
             CapabilityId = capability,
             ContractVersion = CapabilityContractCatalog.GetCurrentVersion(capability),
-            Status = notApplicable
-                ? CapabilityStatus.NotApplicable
-                : capabilityIssues.Length == 0
-                    ? CapabilityStatus.Complete
-                    : CapabilityStatus.Partial,
+            Status = capabilityIssues.Length > 0
+                ? CapabilityStatus.Partial
+                : notApplicable
+                    ? CapabilityStatus.NotApplicable
+                    : CapabilityStatus.Complete,
             StartedAt = startedAt,
             CompletedAt = completedAt,
             ObservedItemCount = observedItemCount,
