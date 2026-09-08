@@ -18,7 +18,7 @@ public sealed class AccountAndRegistryRuleTests
     public void FlagsRequireObservedUac(bool computer, string suffix, long mask, string mode)
     {
         var f = new AnalysisFixture();
-        if (mode != "missing") f.Uac(computer, mode == "negative" ? 512 : mask | 512 | (mode == "disabled" ? 2 : 0));
+        if (mode != "missing") f.Uac(computer, mode == "negative" ? 512L : mask | 512L | (mode == "disabled" ? 2L : 0L));
         var result = f.Check("AD." + (computer ? "COMPUTER." : "USER.") + suffix, computer ? AnalysisFixture.Computer : AnalysisFixture.User);
         Assert.Equal(mode switch { "positive" => RuleOutcome.Present, "negative" => RuleOutcome.NotDetected,
             "disabled" => RuleOutcome.NotApplicable, _ => RuleOutcome.NotVerified }, result.Outcome);
@@ -91,7 +91,7 @@ public sealed class AccountAndRegistryRuleTests
     [Theory, MemberData(nameof(RegistryCases))]
     public void EveryRegistryRuleRequiresExactStoredDwordEvidence(string id, string mode)
     {
-        var f = new AnalysisFixture(); var d = Assert.Single(BuiltInRulePack.RegistryDefinitions.Where(x => x.Id == id));
+        var f = new AnalysisFixture(); var d = Assert.Single(BuiltInRulePack.RegistryDefinitions, x => x.Id == id);
         var positive = d.Comparison == NumericComparison.Equals ? d.Threshold : 0;
         var negative = d.Comparison == NumericComparison.Equals ? (d.Threshold == 0 ? 1u : 0u) : d.Threshold;
         var value = mode == "negative" ? negative : mode == "unsupported" ? d.MaximumSupportedValue + 1 : positive;
@@ -108,8 +108,8 @@ public sealed class AccountAndRegistryRuleTests
     {
         var f = new AnalysisFixture(); var d = BuiltInRulePack.RegistryDefinitions[0]; f.Setting(d.KeyPath, d.ValueName, "1");
         var report = f.Run(d.Id);
-        Assert.Equal(RuleOutcome.Potential, Assert.Single(report.Evaluations.Where(e => e.CheckKey == "Machine")).Outcome);
-        Assert.Equal(RuleOutcome.NotVerified, Assert.Single(report.Evaluations.Where(e => e.CheckKey == "User")).Outcome);
+        Assert.Equal(RuleOutcome.Potential, Assert.Single(report.Evaluations, e => e.CheckKey == "Machine").Outcome);
+        Assert.Equal(RuleOutcome.NotVerified, Assert.Single(report.Evaluations, e => e.CheckKey == "User").Outcome);
         Assert.Equal(AnalysisCompletion.Partial, report.Completion);
     }
 }
