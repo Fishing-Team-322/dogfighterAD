@@ -1,0 +1,10 @@
+{
+  "minimumPasswordLength": 14,
+  "minimumPasswordHistory": 24,
+  "maximumLockoutThreshold": 10,
+  "minimumLockoutMinutes": 15,
+  "userPasswordAgeDays": 365,
+  "computerPasswordAgeDays": 90,
+  "krbtgtPasswordAgeDays": 180,
+  "replicatedLogonAgeDays": 90
+}

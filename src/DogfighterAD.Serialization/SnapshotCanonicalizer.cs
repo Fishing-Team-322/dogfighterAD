@@ -110,6 +110,7 @@ public static class SnapshotCanonicalizer
                 .ThenBy(item => item.Value, StringComparer.Ordinal)
                 .ThenBy(item => item.Disposition)
                 .ThenBy(item => item.DataLength)
+                .ThenBy(item => item.RegistryValueType)
                 .ToArray(),
             Trusts = content.Trusts
                 .OrderBy(item => item.SourceDomainDnsName, StringComparer.OrdinalIgnoreCase)

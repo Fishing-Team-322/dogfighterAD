@@ -12,6 +12,8 @@ public interface IReadOnlyLdapClientFactory
 
 public interface IReadOnlyLdapClient : IAsyncDisposable
 {
+    // True only after successful authenticated bind; custom adapters default to no proof.
+    bool IsAuthenticated => false;
     Task<LdapSearchResult> SearchAsync(
         LdapSearchRequest request,
         CancellationToken cancellationToken);

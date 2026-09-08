@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - foundation/snapshot-core
+      - feature/rule-engine
   pull_request:
 
 permissions:
@@ -39,6 +40,9 @@ jobs:
 
       - name: Unit tests
         run: dotnet run --project tests/DogfighterAD.Core.Tests/DogfighterAD.Core.Tests.csproj --configuration Release --no-build
+
+      - name: Offline rule catalog smoke
+        run: dotnet run --project src/DogfighterAD.Cli/DogfighterAD.Cli.csproj --configuration Release --no-build -- rules --format json
 
       - name: Self-contained Windows publish smoke
         if: runner.os == 'Windows'

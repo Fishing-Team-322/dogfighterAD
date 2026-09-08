@@ -1,0 +1,57 @@
+{
+  "recordType": "static-source-validation-not-runtime-tests",
+  "createdAtUtc": "2026-09-07T21:21:13.814546+00:00",
+  "sourceArchive": "dogfighterAD-main(2).zip",
+  "sourceArchiveSha256": "b0c5e269e95e45b793e874cf3f3949ed4d747e435bf019ab5e977ddb2d60eec0",
+  "builtinRuleIds": 80,
+  "newTestSource": {
+    "factMethods": 19,
+    "inlineDataRows": 69,
+    "memberDataRowsBySourceInspection": {
+      "FlagCases": 56,
+      "RegistryCases": 160,
+      "PolicyCases": 24,
+      "AclCases": 36,
+      "PrivilegeCases": 28,
+      "RegistryTemplateCases": 20
+    },
+    "declaredScenarios": 412,
+    "discoveredByXunit": false,
+    "executed": false
+  },
+  "checks": {
+    "csharpLexicalScreen": {
+      "tool": "Pygments CSharpLexer",
+      "files": 124,
+      "errorTokens": [],
+      "isCompilation": false
+    },
+    "xmlFilesParsed": 8,
+    "projectReferencesChecked": 16,
+    "missingProjectReferences": [],
+    "sampleJsonFilesParsed": [
+      "samples/analysis-policy.json",
+      "samples/rule-catalog-source.json"
+    ],
+    "ciYamlParsed": true,
+    "uniqueRuleIdsAndDocumentationMatch": true,
+    "mergeConflictMarkers": [],
+    "selectedNetworkOrWallClockTokensInEngine": []
+  },
+  "verificationCommand": {
+    "command": "bash scripts/verify.sh",
+    "exitCode": 127,
+    "stdout": "",
+    "stderr": "The .NET 10 SDK is required; no build or tests were run.\n"
+  },
+  "dotnetRestore": "not run: SDK unavailable",
+  "dotnetBuild": "not run: SDK unavailable",
+  "xunit": "not run: SDK unavailable",
+  "liveAdSmb": "not run",
+  "peakMemoryBenchmark": "not run",
+  "notes": [
+    "Lexical screening, XML parsing and catalog inspection do not prove C# compilation or behavioral correctness.",
+    "The source catalog is a documentation artifact, not output from an executed rule engine.",
+    "The uploaded archive is the baseline. No GitHub repository was changed."
+  ]
+}

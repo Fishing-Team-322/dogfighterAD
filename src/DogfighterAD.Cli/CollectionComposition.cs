@@ -38,6 +38,7 @@ internal static class CollectionComposition
         [
             new RootDseCollector(ldapFactory),
             new DomainMetadataCollector(ldapFactory),
+            new SecurityPolicyCollector(ldapFactory),
             new DirectoryObjectsCollector(ldapFactory),
             new GroupMembershipCollector(ldapFactory),
             new TrustCollector(ldapFactory),

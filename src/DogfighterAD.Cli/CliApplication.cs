@@ -1,4 +1,6 @@
 using DogfighterAD.Application.Collection;
+using DogfighterAD.Application.Analysis;
+using System.Text.Json;
 using DogfighterAD.Serialization;
 
 namespace DogfighterAD.Cli;
@@ -36,6 +38,8 @@ internal static class CliApplication
         {
             return parsed.Command switch
             {
+                AnalyzeCommand analyze => await AnalysisCommands.AnalyzeAsync(analyze, output, error, cancellationToken).ConfigureAwait(false),
+                RulesCommand rules => await AnalysisCommands.RulesAsync(rules, output, cancellationToken).ConfigureAwait(false),
                 ScanCommand scan => await RunScanAsync(
                         scan,
                         productVersion,
@@ -61,6 +65,16 @@ internal static class CliApplication
             // Stable domain codes are safe to print; arbitrary imported payload text is not.
             await error.WriteLineAsync($"Artifact operation failed ({exception.Code}).").ConfigureAwait(false);
             return CliExitCodes.RuntimeFailure;
+        }
+        catch (AnalysisLimitException)
+        {
+            await error.WriteLineAsync("Analysis evaluation budget exceeded. No truncated report was published.").ConfigureAwait(false);
+            return CliExitCodes.RuntimeFailure;
+        }
+        catch (Exception exception) when (parsed.Command is AnalyzeCommand && (exception is ArgumentException or JsonException))
+        {
+            await error.WriteLineAsync("Invalid analysis options or policy; verify rule IDs, thresholds and the explicit analysis time.").ConfigureAwait(false);
+            return CliExitCodes.InvalidArguments;
         }
         catch (Exception exception)
         {
@@ -200,6 +214,9 @@ internal static class CliApplication
         await writer.WriteLineAsync("DogfighterAD read-only collection CLI").ConfigureAwait(false);
         await writer.WriteLineAsync().ConfigureAwait(false);
         await writer.WriteLineAsync("Usage:").ConfigureAwait(false);
+        await writer.WriteLineAsync("  dogfighter rules [--format json|text]").ConfigureAwait(false);
+        await writer.WriteLineAsync("  dogfighter analyze --snapshot <input.dogad> --output <report.json|report.html> [--format json|html] [--policy <policy.json>] [--rule <ID>]... [--as-of <ISO-8601>] [--fail-on informational|low|medium|high|critical|none] [--max-snapshot-mib <1-1024>] [--max-evaluations <1-10000000>]").ConfigureAwait(false);
+        await writer.WriteLineAsync("  Analysis is offline. Missing fields produce NotVerified, never inferred defaults. The default reference time is snapshot completion.").ConfigureAwait(false);
         await writer.WriteLineAsync(
                 "  dogfighter scan --target <host-or-domain> --output <snapshot.dogad> [--profile minimal|audit-full] [--max-snapshot-mib <1-1024>] [-u <DOMAIN\\user|user@domain>] [--ldap-auth negotiate|ntlm] [--ldaps] [--ldap-port <1-65535>] [--sysvol-authority <host>]...")
             .ConfigureAwait(false);

@@ -2,6 +2,7 @@ namespace DogfighterAD.Domain.Snapshots;
 
 public static class CollectionCapabilities
 {
+    public const string DirectorySecurityPolicy = "directory.security-policy";
     public const string DirectoryCore = "directory.core";
     public const string DirectoryDomains = "directory.domains";
     public const string DirectoryUsers = "directory.users";

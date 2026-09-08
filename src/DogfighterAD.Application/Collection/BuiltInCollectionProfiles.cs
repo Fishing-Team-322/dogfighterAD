@@ -58,6 +58,7 @@ public static class BuiltInCollectionProfiles
             CollectionCapabilities.DirectoryComputers,
             CollectionCapabilities.DirectoryOrganizationalUnits,
             CollectionCapabilities.DirectoryMemberships,
+            CollectionCapabilities.DirectorySecurityPolicy,
             CollectionCapabilities.DirectoryTrusts
         },
         MaxConcurrency = 2,
@@ -76,6 +77,7 @@ public static class BuiltInCollectionProfiles
             CollectionCapabilities.DirectoryComputers,
             CollectionCapabilities.DirectoryOrganizationalUnits,
             CollectionCapabilities.DirectoryMemberships,
+            CollectionCapabilities.DirectorySecurityPolicy,
             CollectionCapabilities.DirectoryTrusts,
             CollectionCapabilities.DirectoryAcls,
             CollectionCapabilities.GroupPolicyMetadata,

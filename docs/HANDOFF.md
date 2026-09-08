@@ -1,5 +1,7 @@
 # DogfighterAD development handoff
 
+> **Rule Engine 0.2.0 update:** see [RULE_ENGINE.md](RULE_ENGINE.md) for the implemented offline engine, 80 rules, expanded collection contracts, schema-2 compatibility and exact CLI/verification semantics. Historical checkpoints below are retained as history.
+
 Last updated: 2026-09-06.
 
 This is the compact continuation source of truth. Read `ARCHITECTURE.md`, `CAPABILITIES.md`, `ROADMAP.md`, `DEVELOPMENT.md`, `COLLECTION_PROFILES.md`, `DOGAD_FORMAT.md`, `CLI.md`, `MINILAB_RUNBOOK.md` and ADRs before substantial changes.

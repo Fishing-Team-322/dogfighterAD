@@ -317,6 +317,8 @@ public static class SnapshotInvariantValidator
 
         foreach (var setting in content.GroupPolicySettings)
         {
+            if (setting.RegistryValueType.HasValue && setting.Kind != GpoSettingKind.RegistryPolicy)
+                violations.Add(new("snapshot.gpo-setting.registry-type-invalid", "Registry value type is only valid for registry-policy settings."));
             if (!knownGpoIds.Contains(setting.GpoId))
             {
                 violations.Add(new(

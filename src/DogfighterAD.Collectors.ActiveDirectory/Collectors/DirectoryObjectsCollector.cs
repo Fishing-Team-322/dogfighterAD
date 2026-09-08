@@ -13,7 +13,7 @@ namespace DogfighterAD.Collectors.ActiveDirectory.Collectors;
 public sealed class DirectoryObjectsCollector : ICollector
 {
     public const string CollectorId = "ad.ldap.directory-objects";
-    public const string CollectorVersion = "0.1.0";
+    public const string CollectorVersion = "0.2.0";
     private const int DefaultPageSize = 1000;
 
     private static readonly IReadOnlySet<string> ProvidedCapabilities =
@@ -144,13 +144,17 @@ public sealed class DirectoryObjectsCollector : ICollector
             BaseDn = baseDn,
             Filter = BuildFilter(selectedCapabilities),
             Scope = LdapSearchScope.Subtree,
-            Attributes = BuildAttributes(selectedCapabilities),
+            Attributes = BuildAttributes(selectedCapabilities).Append("nTSecurityDescriptor").ToArray(),
+            SecurityDescriptorSections = LdapSecurityDescriptorSections.Dacl,
             PageSize = DefaultPageSize
         };
 
         await using var client = await _ldapClientFactory
             .CreateAsync(context.Target, cancellationToken)
             .ConfigureAwait(false);
+
+        var absenceProof = await LdapAttributeAbsenceProof.CreateAsync(client,
+            context.AvailableData.Content.DirectoryEnvironment?.SchemaNamingContext, cancellationToken).ConfigureAwait(false);
 
         await foreach (var entry in client.SearchEntriesAsync(request, cancellationToken))
         {
@@ -183,6 +187,7 @@ public sealed class DirectoryObjectsCollector : ICollector
                     var user = MapUser(entry, objectGuid.Value, capabilityState, context.Target);
                     users.Add(user);
                     AddUserFacts(observations, entry, user, context.Target, _timeProvider.GetUtcNow());
+                    AddAbsenceFacts(observations, entry, absenceProof, CollectionCapabilities.DirectoryUsers, user, "user", context.Target, _timeProvider.GetUtcNow());
                     capabilityState.ObserveItem();
                     break;
                 }
@@ -199,6 +204,7 @@ public sealed class DirectoryObjectsCollector : ICollector
                     var computer = MapComputer(entry, objectGuid.Value, capabilityState, context.Target);
                     computers.Add(computer);
                     AddComputerFacts(observations, entry, computer, context.Target, _timeProvider.GetUtcNow());
+                    AddAbsenceFacts(observations, entry, absenceProof, CollectionCapabilities.DirectoryComputers, computer, "computer", context.Target, _timeProvider.GetUtcNow());
                     capabilityState.ObserveItem();
                     break;
                 }
@@ -241,6 +247,23 @@ public sealed class DirectoryObjectsCollector : ICollector
         return new CollectorResult(CollectorId, CollectorVersion, fragment);
     }
 
+    private static void AddAbsenceFacts(ICollection<ObservedFact> facts, LdapSearchEntry entry,
+        LdapAttributeAbsenceProof proof, string capability, AdDirectoryObject subject, string prefix,
+        string target, DateTimeOffset at)
+    {
+        foreach (var (attribute, field) in new[]
+        {
+            ("servicePrincipalName", "servicePrincipalName"), ("sIDHistory", "sidHistory"),
+            ("msDS-AllowedToDelegateTo", "allowedToDelegateTo"),
+            ("msDS-SupportedEncryptionTypes", "supportedEncryptionTypes"), ("lastLogonTimestamp", "lastLogonTimestamp")
+        })
+        {
+            if (prefix == "computer" && field == "sidHistory") continue; // Not requested for computers.
+            var absent = proof.Confirm(entry, attribute);
+            if (absent is not null) AbsenceFactWriter.Add(facts, absent, capability, $"ad-object:{subject.Id}",
+                prefix + "." + field, CollectorId, CollectorVersion, target, entry.DistinguishedName, at);
+        }
+    }
     private static AdUser MapUser(
         LdapSearchEntry entry,
         Guid objectGuid,

@@ -13,7 +13,7 @@ namespace DogfighterAD.Collectors.ActiveDirectory.Collectors;
 public sealed class GpoSysvolCollector : ICollector
 {
     public const string CollectorId = "ad.sysvol.gpo-settings";
-    public const string CollectorVersion = "0.1.0";
+    public const string CollectorVersion = "0.2.0";
 
     private static readonly IReadOnlySet<string> ProvidedCapabilities =
         new HashSet<string>(StringComparer.Ordinal)
@@ -253,7 +253,8 @@ public sealed class GpoSysvolCollector : ICollector
                                 Value = parsedSetting.Value,
                                 ValueKind = parsedSetting.ValueKind,
                                 Disposition = parsedSetting.Disposition,
-                                DataLength = parsedSetting.DataLength
+                                DataLength = parsedSetting.DataLength,
+                                RegistryValueType = parsedSetting.RegistryValueType
                             };
                             settings.Add(setting);
                             AddSettingFact(
@@ -432,6 +433,9 @@ public sealed class GpoSysvolCollector : ICollector
         var subjectId = $"ad-object:{gpo.Id}";
         var safeKey = setting.Key.Replace("\\", "/", StringComparison.Ordinal);
         var path = $"gpo.sysvol.setting.{setting.SourceRelativePath}.{setting.Sequence}.{safeKey}";
+        if (setting.RegistryValueType.HasValue)
+            AddFact(facts, subjectId, path + ".registryValueType", setting.RegistryValueType.Value.ToString(CultureInfo.InvariantCulture),
+                FactValueKind.Integer, FactDisposition.Stored, endpoint, locator, observedAt);
         AddFact(
             facts,
             subjectId,

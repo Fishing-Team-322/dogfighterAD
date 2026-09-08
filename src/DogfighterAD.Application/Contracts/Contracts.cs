@@ -1,4 +1,6 @@
 using DogfighterAD.Domain.Findings;
+using DogfighterAD.Domain.Analysis;
+using DogfighterAD.Application.Analysis;
 using DogfighterAD.Domain.Snapshots;
 
 namespace DogfighterAD.Application.Contracts;
@@ -54,7 +56,7 @@ public interface IRule
 {
     RuleMetadata Metadata { get; }
 
-    IEnumerable<Finding> Evaluate(
+    IEnumerable<RuleEvaluation> Evaluate(
         AdSnapshot snapshot,
         RuleContext context);
 }
@@ -74,6 +76,9 @@ public sealed record RuleMetadata
     public IReadOnlyList<CapabilityRequirement> RequiredCapabilities { get; init; } = [];
 
     public IReadOnlyList<RuleReference> References { get; init; } = [];
+    public IReadOnlyList<string> RequiredFields { get; init; } = [];
+    public string Risk { get; init; } = "Review the observed configuration in its deployment context.";
+    public string Remediation { get; init; } = "Validate the configuration and apply the approved security baseline.";
 }
 
 public sealed record RuleReference(
@@ -83,7 +88,13 @@ public sealed record RuleReference(
 
 public sealed record RuleContext(
     DateTimeOffset AnalysisTime,
-    string RulePackVersion);
+    string RulePackVersion)
+{
+    public required ObservationIndex Facts { get; init; }
+    public AnalysisPolicy Policy { get; init; } = new();
+    public CancellationToken CancellationToken { get; init; }
+    internal PrivilegedMembershipIndex? MembershipIndex { get; set; }
+}
 
 public interface ISnapshotRepository
 {
