@@ -157,6 +157,11 @@ public sealed class SnapshotFragmentMerger
                 .Distinct()
                 .OrderBy(x => x.AuthorityId.Value)
                 .ThenBy(x => x.TemplateId.Value)
+                .ToArray(),
+            SecurityDescriptors = MergeSecurityDescriptors(snapshot.SecurityDescriptors),
+            Aces = snapshot.Aces
+                .OrderBy(x => x.TargetObjectId.Value)
+                .ThenBy(x => x.AceIndex)
                 .ToArray()
         };
     }
